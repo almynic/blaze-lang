@@ -236,6 +236,43 @@ static void compileLiteral(Expr* expr) {
 static void compileUnary(Expr* expr) {
     UnaryExpr* unary = &expr->as.unary;
 
+    // Constant folding: if operand is a literal, evaluate at compile time
+    if (unary->operand->kind == EXPR_LITERAL) {
+        Value operand = unary->operand->as.literal.value;
+        Value result;
+        bool canFold = true;
+
+        switch (unary->op.type) {
+            case TOKEN_MINUS:
+                if (IS_INT(operand)) {
+                    result = INT_VAL(-AS_INT(operand));
+                } else if (IS_FLOAT(operand)) {
+                    result = FLOAT_VAL(-AS_FLOAT(operand));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_BANG:
+                if (IS_BOOL(operand)) {
+                    result = BOOL_VAL(!AS_BOOL(operand));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            default:
+                canFold = false;
+                break;
+        }
+
+        if (canFold) {
+            emitConstant(expr->line, result);
+            return;
+        }
+    }
+
+    // Non-constant expression, compile normally
     compileExpr(unary->operand);
 
     switch (unary->op.type) {
@@ -257,6 +294,186 @@ static void compileUnary(Expr* expr) {
 static void compileBinary(Expr* expr) {
     BinaryExpr* binary = &expr->as.binary;
 
+    // Constant folding: if both operands are literals, evaluate at compile time
+    if (binary->left->kind == EXPR_LITERAL && binary->right->kind == EXPR_LITERAL) {
+        Value left = binary->left->as.literal.value;
+        Value right = binary->right->as.literal.value;
+        Value result;
+        bool canFold = true;
+
+        switch (binary->op.type) {
+            // Arithmetic on integers
+            case TOKEN_PLUS:
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = INT_VAL(AS_INT(left) + AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) + AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) + AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) + (double)AS_INT(right));
+                } else if (IS_OBJ(left) && IS_OBJ(right) &&
+                           AS_OBJ(left)->type == OBJ_STRING && AS_OBJ(right)->type == OBJ_STRING) {
+                    // String concatenation
+                    ObjString* a = AS_STRING(left);
+                    ObjString* b = AS_STRING(right);
+                    int length = a->length + b->length;
+                    char* chars = ALLOCATE(char, length + 1);
+                    memcpy(chars, a->chars, a->length);
+                    memcpy(chars + a->length, b->chars, b->length);
+                    chars[length] = '\0';
+                    result = OBJ_VAL(takeString(chars, length));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_MINUS:
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = INT_VAL(AS_INT(left) - AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) - AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) - AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) - (double)AS_INT(right));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_STAR:
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = INT_VAL(AS_INT(left) * AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) * AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) * AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) * (double)AS_INT(right));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_SLASH:
+                if (IS_INT(left) && IS_INT(right)) {
+                    if (AS_INT(right) == 0) {
+                        canFold = false;  // Don't fold division by zero
+                    } else {
+                        result = INT_VAL(AS_INT(left) / AS_INT(right));
+                    }
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) / AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) / AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) / (double)AS_INT(right));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_PERCENT:
+                if (IS_INT(left) && IS_INT(right)) {
+                    if (AS_INT(right) == 0) {
+                        canFold = false;  // Don't fold modulo by zero
+                    } else {
+                        result = INT_VAL(AS_INT(left) % AS_INT(right));
+                    }
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            // Comparison operators
+            case TOKEN_LESS:
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = BOOL_VAL(AS_INT(left) < AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = BOOL_VAL(AS_FLOAT(left) < AS_FLOAT(right));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_LESS_EQUAL:
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = BOOL_VAL(AS_INT(left) <= AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = BOOL_VAL(AS_FLOAT(left) <= AS_FLOAT(right));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_GREATER:
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = BOOL_VAL(AS_INT(left) > AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = BOOL_VAL(AS_FLOAT(left) > AS_FLOAT(right));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_GREATER_EQUAL:
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = BOOL_VAL(AS_INT(left) >= AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = BOOL_VAL(AS_FLOAT(left) >= AS_FLOAT(right));
+                } else {
+                    canFold = false;
+                }
+                break;
+
+            case TOKEN_EQUAL_EQUAL:
+                // Simple equality for constants
+                if (IS_BOOL(left) && IS_BOOL(right)) {
+                    result = BOOL_VAL(AS_BOOL(left) == AS_BOOL(right));
+                } else if (IS_NIL(left) && IS_NIL(right)) {
+                    result = BOOL_VAL(true);
+                } else if (IS_INT(left) && IS_INT(right)) {
+                    result = BOOL_VAL(AS_INT(left) == AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = BOOL_VAL(AS_FLOAT(left) == AS_FLOAT(right));
+                } else if (IS_OBJ(left) && IS_OBJ(right)) {
+                    result = BOOL_VAL(AS_OBJ(left) == AS_OBJ(right));  // Pointer equality
+                } else {
+                    result = BOOL_VAL(false);
+                }
+                break;
+
+            case TOKEN_BANG_EQUAL:
+                // Simple inequality for constants
+                if (IS_BOOL(left) && IS_BOOL(right)) {
+                    result = BOOL_VAL(AS_BOOL(left) != AS_BOOL(right));
+                } else if (IS_NIL(left) && IS_NIL(right)) {
+                    result = BOOL_VAL(false);
+                } else if (IS_INT(left) && IS_INT(right)) {
+                    result = BOOL_VAL(AS_INT(left) != AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = BOOL_VAL(AS_FLOAT(left) != AS_FLOAT(right));
+                } else if (IS_OBJ(left) && IS_OBJ(right)) {
+                    result = BOOL_VAL(AS_OBJ(left) != AS_OBJ(right));
+                } else {
+                    result = BOOL_VAL(true);
+                }
+                break;
+
+            default:
+                canFold = false;
+                break;
+        }
+
+        if (canFold) {
+            // Emit the folded constant directly
+            emitConstant(expr->line, result);
+            return;
+        }
+    }
+
+    // Non-constant expression, compile normally
     compileExpr(binary->left);
     compileExpr(binary->right);
 
@@ -312,6 +529,52 @@ static void compileBinary(Expr* expr) {
 static void compileLogical(Expr* expr) {
     LogicalExpr* logical = &expr->as.logical;
 
+    // Constant folding: if both operands are boolean literals, evaluate at compile time
+    if (logical->left->kind == EXPR_LITERAL && logical->right->kind == EXPR_LITERAL) {
+        Value left = logical->left->as.literal.value;
+        Value right = logical->right->as.literal.value;
+
+        if (IS_BOOL(left) && IS_BOOL(right)) {
+            Value result;
+            if (logical->op.type == TOKEN_AND) {
+                result = BOOL_VAL(AS_BOOL(left) && AS_BOOL(right));
+            } else {  // TOKEN_OR
+                result = BOOL_VAL(AS_BOOL(left) || AS_BOOL(right));
+            }
+            emitConstant(expr->line, result);
+            return;
+        }
+    }
+
+    // Partial folding: if left is a constant boolean, we can sometimes short-circuit
+    if (logical->left->kind == EXPR_LITERAL) {
+        Value left = logical->left->as.literal.value;
+        if (IS_BOOL(left)) {
+            if (logical->op.type == TOKEN_AND) {
+                if (!AS_BOOL(left)) {
+                    // false && anything = false
+                    emitConstant(expr->line, BOOL_VAL(false));
+                    return;
+                } else {
+                    // true && right = right
+                    compileExpr(logical->right);
+                    return;
+                }
+            } else {  // TOKEN_OR
+                if (AS_BOOL(left)) {
+                    // true || anything = true
+                    emitConstant(expr->line, BOOL_VAL(true));
+                    return;
+                } else {
+                    // false || right = right
+                    compileExpr(logical->right);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Non-constant expression, compile with short-circuit evaluation
     if (logical->op.type == TOKEN_AND) {
         compileExpr(logical->left);
         int endJump = emitJump(expr->line, OP_JUMP_IF_FALSE);

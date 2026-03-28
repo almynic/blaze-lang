@@ -191,6 +191,7 @@ The Blaze compiler is **functionally complete** and production-ready! It's a sta
 - ✅ **String interning** for efficient string comparison and memory usage
 - ✅ **Type narrowing** for union and optional types in conditionals
 - ✅ **String interpolation** with `${expression}` syntax
+- ✅ **Constant folding** optimization for compile-time evaluation
 
 ### Known Limitations
 
@@ -204,7 +205,7 @@ The core compiler is complete and has excellent DX. These are optional enhanceme
 
 - **Generic types** (e.g., `Map<K, V>`, `Array<T>`) - Would require significant type system extensions
 - **Debug mode** with step-through execution and breakpoints
-- **Optimizations**: Constant folding, dead code elimination, tail call optimization
+- **Additional optimizations**: Dead code elimination, tail call optimization
 - **NaN boxing** for value representation (performance optimization)
 - **Spread operator** for arrays (`...arr`)
 - **Destructuring** for arrays and objects
@@ -698,6 +699,55 @@ All tests pass successfully!
 ---
 
 ## Changelog
+
+### March 28, 2026 - Constant Folding Optimization Implemented
+- **NEW FEATURE**: Constant folding - compile-time evaluation of constant expressions
+- Evaluates expressions with constant operands at compile time instead of runtime
+- Reduces bytecode size and improves runtime performance
+- No changes to language semantics, purely an optimization
+
+Operations optimized:
+- **Arithmetic**: `2 + 3` → `5`, `10 * 5` → `50`, mixed int/float operations
+- **Comparison**: `5 < 10` → `true`, `42 == 42` → `true`
+- **Logical**: `true && false` → `false`, with short-circuit optimization
+- **Unary**: `-42` → `-42`, `!true` → `false`
+- **String concatenation**: `"Hello, " + "World!"` → `"Hello, World!"`
+
+Examples that are now optimized:
+```blaze
+let x = 2 + 3           // Compiled as: let x = 5
+let y = 10 * 5 - 3      // Compiled as: let y = 47
+let z = true && false   // Compiled as: let z = false
+let s = "foo" + "bar"   // Compiled as: let s = "foobar"
+```
+
+Implementation details (src/compiler.c):
+- Added constant folding in `compileBinary()` before code generation
+- Added constant folding in `compileUnary()` for negation and NOT
+- Added constant folding in `compileLogical()` with short-circuit optimization
+- Detects when both operands are EXPR_LITERAL and evaluates directly
+- Special handling for division/modulo by zero (doesn't fold)
+- Partial folding for logical operations: `false && x` → `false`
+
+Compiler changes:
+- Modified `compileBinary()` to check for constant operands first
+- Modified `compileUnary()` to check for constant operand first
+- Modified `compileLogical()` for full and partial constant folding
+- Emits folded constant directly using `emitConstant()`
+
+Performance benefits:
+- Smaller bytecode (fewer instructions)
+- Faster runtime (no arithmetic at runtime for constants)
+- Enables further optimizations in the future
+- Zero overhead (only happens at compile time)
+
+Testing:
+- Comprehensive test suite with 10 test categories
+- Tests arithmetic, comparison, logical, unary, and string operations
+- All tests pass, all existing tests still pass
+
+This is a fundamental compiler optimization that makes constant-heavy code
+more efficient without any changes to the language syntax or semantics.
 
 ### March 28, 2026 - String Interpolation Implemented
 - **NEW FEATURE**: String interpolation - embed expressions directly in strings
