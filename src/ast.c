@@ -326,6 +326,10 @@ static Stmt* allocateStmt(StmtKind kind, int line) {
 }
 
 Stmt* newExpressionStmt(Expr* expression) {
+    if (expression == NULL) {
+        // Parse error occurred, return NULL to indicate failure
+        return NULL;
+    }
     Stmt* stmt = allocateStmt(STMT_EXPRESSION, expression->line);
     stmt->as.expression.expression = expression;
     return stmt;
