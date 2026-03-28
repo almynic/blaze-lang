@@ -37,6 +37,7 @@ typedef struct VM {
     ObjUpvalue* openUpvalues;  // Linked list of open upvalues
 
     Table globals;             // Global variables and native functions
+    Table strings;             // String interning table
 
     // Exception handling
     ExceptionHandler exceptionHandlers[EXCEPTION_HANDLERS_MAX];

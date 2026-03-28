@@ -80,16 +80,51 @@ static ObjString* allocateString(char* chars, int length, uint32_t hash) {
 ObjString* copyString(const char* chars, int length) {
     uint32_t hash = hashString(chars, length);
 
+    // Check if the string already exists in the intern table
+    if (gcVM != NULL) {
+        ObjString* interned = tableFindString(&gcVM->strings, chars, length, hash);
+        if (interned != NULL) {
+            return interned;
+        }
+    }
+
+    // String doesn't exist, create a new one
     char* heapChars = ALLOCATE(char, length + 1);
     memcpy(heapChars, chars, length);
     heapChars[length] = '\0';
 
-    return allocateString(heapChars, length, hash);
+    ObjString* string = allocateString(heapChars, length, hash);
+
+    // Add to intern table
+    if (gcVM != NULL) {
+        tableSet(&gcVM->strings, string, NIL_VAL);
+    }
+
+    return string;
 }
 
 ObjString* takeString(char* chars, int length) {
     uint32_t hash = hashString(chars, length);
-    return allocateString(chars, length, hash);
+
+    // Check if the string already exists in the intern table
+    if (gcVM != NULL) {
+        ObjString* interned = tableFindString(&gcVM->strings, chars, length, hash);
+        if (interned != NULL) {
+            // String already exists, free the one we were given and return the interned one
+            FREE_ARRAY(char, chars, length + 1);
+            return interned;
+        }
+    }
+
+    // String doesn't exist, create a new one with the given chars
+    ObjString* string = allocateString(chars, length, hash);
+
+    // Add to intern table
+    if (gcVM != NULL) {
+        tableSet(&gcVM->strings, string, NIL_VAL);
+    }
+
+    return string;
 }
 
 // ============================================================================

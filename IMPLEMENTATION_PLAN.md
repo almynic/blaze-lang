@@ -60,6 +60,20 @@ value = "hello"  // Valid!
 let maybe: int? = nil
 let result = maybe ?? 42
 
+// Type narrowing for union types
+let data: int | string = 100
+if type(data) == "int" {
+    let doubled = data * 2  // data is narrowed to int here
+    print(doubled)
+}
+
+// Type narrowing for optional types
+let opt: int? = 42
+if opt != nil {
+    let squared = opt * opt  // opt is narrowed to int here
+    print(squared)
+}
+
 // Pattern matching (statement)
 match value {
     1 => print("one")
@@ -67,7 +81,7 @@ match value {
     _ => print("other")
 }
 
-// Match expressions (NEW!)
+// Match expressions with integers
 let result = match value {
     1 => "one"
     2 => "two"
@@ -79,6 +93,16 @@ fn getDay(n: int) -> string {
         1 => "Monday"
         2 => "Tuesday"
         _ => "Weekend"
+    }
+}
+
+// Match expressions with strings (works with string interning!)
+fn classifyAnimal(animal: string) -> string {
+    return match animal {
+        "dog" => "Mammal"
+        "cat" => "Mammal"
+        "bird" => "Avian"
+        _ => "Unknown"
     }
 }
 
@@ -160,22 +184,20 @@ The Blaze compiler is **functionally complete** and production-ready! It's a sta
 - ✅ Comprehensive standard library (math, array, string modules)
 - ✅ **Color-coded terminal output** for errors, warnings, and REPL
 - ✅ **Context-aware error messages** with code snippets and helpful hints
+- ✅ **String interning** for efficient string comparison and memory usage
+- ✅ **Type narrowing** for union and optional types in conditionals
 
 ### Known Limitations
 
 These are current design choices or limitations:
 
 - **Finally blocks and early returns**: Finally blocks don't execute on early return/break (would require more complex bytecode)
-- **Type narrowing**: Union types don't support automatic type narrowing in conditionals yet
-- **String literal comparison**: String literals are not interned, so `"hello" == "hello"` returns false. Use variables or the string comparison functions from std/string.blaze for now.
 
 ### Optional Future Enhancements
 
 The core compiler is complete and has excellent DX. These are optional enhancements:
 
-- **String interning** (fix string literal comparison issue)
 - **Generic types** (e.g., `Map<K, V>`, `Array<T>`) - Would require significant type system extensions
-- **Type narrowing** in conditionals for union types
 - **Debug mode** with step-through execution and breakpoints
 - **Optimizations**: Constant folding, dead code elimination, tail call optimization
 - **NaN boxing** for value representation (performance optimization)
@@ -374,7 +396,7 @@ These MUST remain native (require C library or low-level access):
 - [x] Add union type syntax: `int | string`
 - [x] Implement union type checking
 - [x] Union type assignability rules (T can be assigned to T | U)
-- [ ] Add type narrowing in conditionals (future enhancement)
+- [x] Add type narrowing in conditionals
 
 ### 7.3 Optional/Nullable Types - COMPLETED
 - [x] Add optional type syntax: `int?`
@@ -445,8 +467,6 @@ These MUST remain native (require C library or low-level access):
 
 **Phase 7**: Advanced Type System
 - Generic types (e.g., `Array<T>`, `Map<K,V>`)
-- Type narrowing for union types
-- Match expressions (return values directly)
 
 **Phase 8**: Debug Mode
 - Step-through execution
@@ -674,6 +694,79 @@ All tests pass successfully!
 ---
 
 ## Changelog
+
+### March 28, 2026 - Type Narrowing Implemented
+- **NEW FEATURE**: Type narrowing - automatic type refinement in conditional blocks
+- Union and optional types are now automatically narrowed based on type guards
+- Supported type guards:
+  - `type(x) == "typename"` - narrows union types to specific type
+  - `x == nil` / `x != nil` - narrows optional types
+- Type narrowing works in both then and else branches
+- Allows safe operations on narrowed types without explicit casts
+
+Type guard patterns:
+```blaze
+// Union type narrowing
+let value: int | string = 100
+if type(value) == "int" {
+    let doubled = value * 2  // value is int here
+}
+
+// Optional type narrowing
+let maybe: int? = 42
+if maybe != nil {
+    let result = maybe * 2  // maybe is int here
+}
+
+// Narrowing in else branch
+let data: int | string = "text"
+if type(data) == "int" {
+    // data is int
+} else {
+    // data is string
+}
+```
+
+Implementation details:
+- Added type guard detection in `analyzeTypeGuard()` function
+- Type narrowing applied via symbol shadowing in nested scopes
+- Enhanced equality operator to allow comparing optional types with nil
+- Comprehensive test suite with 6 test categories
+
+Benefits:
+- Removed "Type narrowing" from known limitations
+- Makes union and optional types much more practical
+- Type-safe without explicit type assertions
+- Better developer experience with fewer type errors
+
+### March 28, 2026 - String Interning Implemented
+- **NEW FEATURE**: String interning - all strings with the same content now share the same memory
+- Added `strings` table to VM for interning
+- Modified `copyString()` to check intern table before creating new strings
+- Modified `takeString()` to reuse interned strings
+- String literal equality now works correctly: `"hello" == "hello"` returns `true`
+- Match expressions now work with string patterns
+- Significant memory savings for duplicate strings
+- O(1) string comparison instead of O(n)
+
+Benefits:
+- Fixed string literal comparison (was a known limitation)
+- Match expressions now work perfectly with strings
+- Reduced memory usage (duplicate strings share memory)
+- Faster string comparisons (pointer equality instead of memcmp)
+
+Examples now working:
+```blaze
+// String equality works!
+print("hello" == "hello")  // true
+
+// Match with strings works!
+let result = match "cat" {
+    "dog" => "Canine"
+    "cat" => "Feline"
+    _ => "Unknown"
+}
+```
 
 ### March 28, 2026 - Match Expressions Implemented
 - **NEW FEATURE**: Match expressions - match can now be used as an expression that returns a value

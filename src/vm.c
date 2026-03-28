@@ -963,6 +963,7 @@ void initVM(VM* vm) {
     vm->chunk = NULL;
     vm->ip = NULL;
     initTable(&vm->globals);
+    initTable(&vm->strings);
 
     // Register VM for garbage collection
     setGCVM(vm);
@@ -1038,6 +1039,7 @@ void initVM(VM* vm) {
 }
 
 void freeVM(VM* vm) {
+    freeTable(&vm->strings);
     freeTable(&vm->globals);
     setGCVM(NULL);  // Unregister VM from GC
     freeObjects();
