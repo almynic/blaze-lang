@@ -78,6 +78,7 @@ typedef enum {
     OP_CLOSURE,
     OP_CLOSE_UPVALUE,
     OP_RETURN,
+    OP_TAIL_CALL,       // Tail call optimization
 
     // Classes
     OP_CLASS,

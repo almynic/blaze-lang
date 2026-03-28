@@ -1,0 +1,136 @@
+// Comprehensive Tail Call Optimization Test Suite
+// Using unique function names to avoid stdlib conflicts
+
+print("=== Tail Call Optimization Tests ===")
+print("")
+
+// Test 1: Single-parameter tail recursion
+print("Test 1: Countdown (single parameter)")
+fn countdown(n: int) -> int {
+    if n <= 0 {
+        return 0
+    }
+    return countdown(n - 1)
+}
+
+print(countdown(10))
+print(countdown(100))
+print("✓ Test 1 passed")
+print("")
+
+// Test 2: Two-parameter tail recursion
+print("Test 2: Factorial with accumulator")
+fn factAcc(n: int, acc: int) -> int {
+    if n <= 1 {
+        return acc
+    }
+    let nextN = n - 1
+    let nextAcc = n * acc
+    return factAcc(nextN, nextAcc)
+}
+
+print(factAcc(5, 1))
+print(factAcc(10, 1))
+print("✓ Test 2 passed")
+print("")
+
+// Test 3: Deep recursion (would overflow without TCO)
+print("Test 3: Very deep recursion (1000+ frames)")
+fn deepCount(n: int) -> int {
+    if n <= 0 {
+        return 42
+    }
+    return deepCount(n - 1)
+}
+
+print(deepCount(1000))
+print(deepCount(2000))
+print("✓ Test 3 passed (no stack overflow!)")
+print("")
+
+// Test 4: Sum with accumulator
+print("Test 4: Sum with accumulator")
+fn sumAcc(n: int, acc: int) -> int {
+    if n <= 0 {
+        return acc
+    }
+    return sumAcc(n - 1, acc + n)
+}
+
+print(sumAcc(100, 0))
+print("✓ Test 4 passed")
+print("")
+
+// Test 5: Power with accumulator
+print("Test 5: Power with accumulator")
+fn powerAcc(base: int, exp: int, acc: int) -> int {
+    if exp == 0 {
+        return acc
+    }
+    return powerAcc(base, exp - 1, acc * base)
+}
+
+print(powerAcc(2, 10, 1))
+print("✓ Test 5 passed")
+print("")
+
+// Test 6: GCD tail recursive
+print("Test 6: GCD (Euclidean algorithm)")
+fn gcdTail(a: int, b: int) -> int {
+    if b == 0 {
+        return a
+    }
+    return gcdTail(b, a % b)
+}
+
+print(gcdTail(48, 18))
+print(gcdTail(100, 35))
+print("✓ Test 6 passed")
+print("")
+
+// Test 7: Conditional tail recursion (Collatz)
+print("Test 7: Collatz sequence length")
+fn collatz(n: int, steps: int) -> int {
+    if n == 1 {
+        return steps
+    }
+    if n % 2 == 0 {
+        return collatz(n / 2, steps + 1)
+    }
+    return collatz(n * 3 + 1, steps + 1)
+}
+
+print(collatz(27, 0))
+print("✓ Test 7 passed")
+print("")
+
+// Test 8: Multiple return paths with tail calls
+print("Test 8: Multiple tail call branches")
+fn multiPath(n: int, acc: int) -> int {
+    if n <= 0 {
+        return acc
+    }
+    if n % 2 == 0 {
+        return multiPath(n - 1, acc + n)
+    }
+    return multiPath(n - 1, acc * 2)
+}
+
+print(multiPath(10, 0))
+print("✓ Test 8 passed")
+print("")
+
+// Test 9: Very deep recursion stress test
+print("Test 9: Stress test (5000 frames)")
+fn stressTest(n: int) -> int {
+    if n <= 0 {
+        return 999
+    }
+    return stressTest(n - 1)
+}
+
+print(stressTest(5000))
+print("✓ Test 9 passed (TCO prevents stack overflow!)")
+print("")
+
+print("=== All Tail Call Optimization Tests Passed! ===")

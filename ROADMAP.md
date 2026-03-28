@@ -49,12 +49,12 @@ Blaze is a feature-complete statically-typed programming language. This roadmap 
 - ✅ Higher-order functions in stdlib
 - ✅ Module system with selective imports
 
-### Optimizations (Partial - 60% Complete)
+### Optimizations (Partial - 71% Complete)
 - ✅ String interning for efficient string comparison and memory usage
 - ✅ String interpolation with `${expression}` syntax
 - ✅ Constant folding optimization for compile-time evaluation
 - ✅ Dead code elimination removes unreachable code after returns/throws
-- ⬜ Tail call optimization
+- ✅ Tail call optimization for efficient recursive functions
 - ⬜ NaN boxing for value representation
 - ⬜ Loop unrolling
 
@@ -118,13 +118,9 @@ The core compiler is complete and has excellent developer experience. These are 
 - ✅ Constant folding
 - ✅ Dead code elimination
 - ✅ String interning
+- ✅ Tail call optimization
 
 #### Remaining Optimizations
-
-**Tail Call Optimization**
-- Optimize tail-recursive functions to avoid stack overflow
-- Detect tail call patterns in compiler
-- Reuse current stack frame instead of creating new one
 
 **NaN Boxing**
 - Use IEEE 754 NaN values to pack type tags into double

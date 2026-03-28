@@ -1899,6 +1899,94 @@ static InterpretResult executeWithFrames(VM* vm) {
                 break;
             }
 
+            case OP_TAIL_CALL: {
+                int argCount = READ_BYTE();
+                Value callee = peek(vm, argCount);
+
+                // Handle native functions - fall back to normal call + return
+                if (IS_OBJ(callee) && OBJ_TYPE(callee) == OBJ_NATIVE) {
+                    if (!callValue(vm, callee, argCount)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    Value result = pop(vm);
+                    closeUpvalues(vm, frame->slots);
+                    vm->frameCount--;
+
+                    if (vm->frameCount == 0) {
+                        pop(vm);
+                        return INTERPRET_OK;
+                    }
+
+                    vm->stackTop = frame->slots;
+                    push(vm, result);
+                    frame = &vm->frames[vm->frameCount - 1];
+                    break;
+                }
+
+                // Handle class instantiation - fall back to normal call + return
+                if (IS_OBJ(callee) && OBJ_TYPE(callee) == OBJ_CLASS) {
+                    if (!callValue(vm, callee, argCount)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    Value result = pop(vm);
+                    closeUpvalues(vm, frame->slots);
+                    vm->frameCount--;
+
+                    if (vm->frameCount == 0) {
+                        pop(vm);
+                        return INTERPRET_OK;
+                    }
+
+                    vm->stackTop = frame->slots;
+                    push(vm, result);
+                    frame = &vm->frames[vm->frameCount - 1];
+                    break;
+                }
+
+                // Handle bound methods
+                if (IS_OBJ(callee) && OBJ_TYPE(callee) == OBJ_BOUND_METHOD) {
+                    ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
+                    vm->stackTop[-argCount - 1] = bound->receiver;
+                    callee = OBJ_VAL(bound->method);
+                }
+
+                // Must be a closure
+                if (!IS_OBJ(callee) || OBJ_TYPE(callee) != OBJ_CLOSURE) {
+                    runtimeError(vm, "Can only call functions.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjClosure* closure = AS_CLOSURE(callee);
+
+                // Validate argument count
+                if (argCount != closure->function->arity) {
+                    runtimeError(vm, "Expected %d arguments but got %d.",
+                                 closure->function->arity, argCount);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                // Close upvalues before reusing frame
+                closeUpvalues(vm, frame->slots);
+
+                // Move new call data to frame start
+                Value* src = vm->stackTop - argCount - 1;
+                Value* dst = frame->slots;
+                for (int i = 0; i <= argCount; i++) {
+                    dst[i] = src[i];
+                }
+
+                // Reset stack top
+                vm->stackTop = frame->slots + argCount + 1;
+
+                // Update frame to new function
+                frame->closure = closure;
+                frame->ip = closure->function->chunk.code;
+
+                // frame->slots and vm->frameCount stay the same (frame reuse!)
+
+                break;
+            }
+
             case OP_PRINT: {
                 Value value = pop(vm);
                 printValue(value);

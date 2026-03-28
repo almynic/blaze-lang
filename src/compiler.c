@@ -1258,12 +1258,51 @@ static void compileFunctionStmt(Stmt* stmt) {
 static void compileReturnStmt(Stmt* stmt) {
     ReturnStmt* ret = &stmt->as.return_;
 
+    // Initializers must return 'this', no tail calls
     if (current->type == FN_TYPE_INITIALIZER) {
         if (ret->value != NULL) {
             compileError(stmt->line, "Cannot return a value from an initializer.");
         }
         emitBytes(stmt->line, OP_GET_LOCAL, 0);  // Return 'this'
-    } else if (ret->value != NULL) {
+        emitByte(stmt->line, OP_RETURN);
+        return;
+    }
+
+    // Check for tail call pattern: return func(...)
+    if (ret->value != NULL && ret->value->kind == EXPR_CALL) {
+        CallExpr* call = &ret->value->as.call;
+
+        // Skip built-in print() optimization
+        if (call->callee->kind == EXPR_VARIABLE) {
+            VariableExpr* callee = &call->callee->as.variable;
+            if (callee->name.length == 5 && memcmp(callee->name.start, "print", 5) == 0) {
+                if (call->argCount == 1) {
+                    compileExpr(call->arguments[0]);
+                    emitByte(stmt->line, OP_PRINT);
+                    emitByte(stmt->line, OP_RETURN);
+                    return;
+                }
+            }
+        }
+
+        // Skip super method calls (complex semantics)
+        if (call->callee->kind == EXPR_SUPER) {
+            compileExpr(ret->value);
+            emitByte(stmt->line, OP_RETURN);
+            return;
+        }
+
+        // Emit tail call optimization
+        compileExpr(call->callee);
+        for (int i = 0; i < call->argCount; i++) {
+            compileExpr(call->arguments[i]);
+        }
+        emitBytes(stmt->line, OP_TAIL_CALL, (uint8_t)call->argCount);
+        return;
+    }
+
+    // Normal return path
+    if (ret->value != NULL) {
         compileExpr(ret->value);
     } else {
         emitByte(stmt->line, OP_NIL);
