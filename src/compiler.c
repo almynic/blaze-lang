@@ -786,11 +786,81 @@ static void compileExpr(Expr* expr) {
             }
             break;
         }
-        case EXPR_ARRAY:
-            for (int i = 0; i < expr->as.array.elementCount; i++) {
-                compileExpr(expr->as.array.elements[i]);
+        case EXPR_ARRAY: {
+            // Handle array literals with possible spread expressions
+            // Strategy: build chunks of non-spread elements and concatenate with spread arrays
+
+            int elementCount = expr->as.array.elementCount;
+            if (elementCount == 0) {
+                // Empty array
+                emitBytes(expr->line, OP_ARRAY, 0);
+                break;
             }
-            emitBytes(expr->line, OP_ARRAY, (uint8_t)expr->as.array.elementCount);
+
+            // Check if we have any spreads
+            bool hasSpread = false;
+            for (int i = 0; i < elementCount; i++) {
+                if (expr->as.array.elements[i]->kind == EXPR_SPREAD) {
+                    hasSpread = true;
+                    break;
+                }
+            }
+
+            if (!hasSpread) {
+                // No spreads, simple case
+                for (int i = 0; i < elementCount; i++) {
+                    compileExpr(expr->as.array.elements[i]);
+                }
+                emitBytes(expr->line, OP_ARRAY, (uint8_t)elementCount);
+                break;
+            }
+
+            // Has spreads - build in chunks and concatenate
+            bool hasResult = false;  // Track if we have a result array on stack
+            int chunkStart = 0;
+
+            for (int i = 0; i <= elementCount; i++) {
+                bool isSpread = (i < elementCount && expr->as.array.elements[i]->kind == EXPR_SPREAD);
+                bool isEnd = (i == elementCount);
+
+                if (isSpread || isEnd) {
+                    // Emit any accumulated non-spread elements as an array
+                    int chunkSize = i - chunkStart;
+                    if (chunkSize > 0) {
+                        for (int j = chunkStart; j < i; j++) {
+                            compileExpr(expr->as.array.elements[j]);
+                        }
+                        emitBytes(expr->line, OP_ARRAY, (uint8_t)chunkSize);
+                        if (hasResult) {
+                            emitByte(expr->line, OP_ARRAY_CONCAT);
+                        }
+                        hasResult = true;
+                    }
+
+                    // If this is a spread, emit the spread array and concatenate
+                    if (isSpread) {
+                        compileExpr(expr->as.array.elements[i]->as.spread.operand);
+                        if (hasResult) {
+                            emitByte(expr->line, OP_ARRAY_CONCAT);
+                        } else {
+                            hasResult = true;
+                        }
+                        chunkStart = i + 1;
+                    }
+                }
+            }
+
+            // If we never built a result (all spreads with no regular elements), create empty array
+            if (!hasResult) {
+                emitBytes(expr->line, OP_ARRAY, 0);
+            }
+            break;
+        }
+        case EXPR_SPREAD:
+            // Spread expressions should only appear within array literals
+            // and are handled there. If we encounter one here, just compile
+            // the operand (though the type checker should have caught this).
+            compileExpr(expr->as.spread.operand);
             break;
         case EXPR_INDEX:
             compileExpr(expr->as.index.object);

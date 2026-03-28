@@ -188,6 +188,14 @@ Expr* newArrayExpr(Token bracket, Expr** elements, int elementCount) {
     return expr;
 }
 
+Expr* newSpreadExpr(Token dots, Expr* operand) {
+    Expr* expr = allocateExpr(EXPR_SPREAD, dots.line);
+    expr->as.spread.dots = dots;
+    expr->as.spread.operand = operand;
+    expr->as.spread.type = NULL;
+    return expr;
+}
+
 Expr* newIndexExpr(Expr* object, Token bracket, Expr* index) {
     Expr* expr = allocateExpr(EXPR_INDEX, bracket.line);
     expr->as.index.object = object;
@@ -300,6 +308,9 @@ void freeExpr(Expr* expr) {
                 freeExpr(expr->as.array.elements[i]);
             }
             FREE_ARRAY(Expr*, expr->as.array.elements, expr->as.array.elementCount);
+            break;
+        case EXPR_SPREAD:
+            freeExpr(expr->as.spread.operand);
             break;
         case EXPR_INDEX:
             freeExpr(expr->as.index.object);
@@ -688,6 +699,10 @@ static void printExprIndent(Expr* expr, int indent) {
             for (int i = 0; i < expr->as.array.elementCount; i++) {
                 printExprIndent(expr->as.array.elements[i], indent + 1);
             }
+            break;
+        case EXPR_SPREAD:
+            printf("Spread:\n");
+            printExprIndent(expr->as.spread.operand, indent + 1);
             break;
         case EXPR_INDEX:
             printf("Index:\n");

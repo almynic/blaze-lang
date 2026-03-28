@@ -269,7 +269,17 @@ Token scanToken(Scanner* scanner) {
         case '-':
             return makeToken(scanner, match(scanner, '>') ? TOKEN_ARROW : TOKEN_MINUS);
         case '.':
-            return makeToken(scanner, match(scanner, '.') ? TOKEN_DOT_DOT : TOKEN_DOT);
+            if (match(scanner, '.')) {
+                // We have at least two dots
+                if (match(scanner, '.')) {
+                    // We have three dots
+                    return makeToken(scanner, TOKEN_DOT_DOT_DOT);
+                }
+                // Just two dots
+                return makeToken(scanner, TOKEN_DOT_DOT);
+            }
+            // Just one dot
+            return makeToken(scanner, TOKEN_DOT);
         case '&':
             if (match(scanner, '&')) return makeToken(scanner, TOKEN_AND);
             return errorToken(scanner, "Expected '&' after '&'.");
@@ -320,6 +330,7 @@ const char* tokenTypeName(TokenType type) {
         case TOKEN_ARROW:         return "ARROW";
         case TOKEN_FAT_ARROW:     return "FAT_ARROW";
         case TOKEN_DOT_DOT:       return "DOT_DOT";
+        case TOKEN_DOT_DOT_DOT:   return "DOT_DOT_DOT";
         case TOKEN_AND:           return "AND";
         case TOKEN_OR:            return "OR";
         case TOKEN_PIPE:          return "PIPE";

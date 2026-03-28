@@ -2132,6 +2132,29 @@ static InterpretResult executeWithFrames(VM* vm) {
                 break;
             }
 
+            case OP_ARRAY_CONCAT: {
+                // Pop two arrays from stack and concatenate them
+                Value bVal = pop(vm);
+                Value aVal = pop(vm);
+                if (!IS_ARRAY(aVal) || !IS_ARRAY(bVal)) {
+                    runtimeError(vm, "Can only concatenate arrays.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                ObjArray* a = AS_ARRAY(aVal);
+                ObjArray* b = AS_ARRAY(bVal);
+                ObjArray* result = newArray();
+                // Copy elements from first array
+                for (int i = 0; i < a->count; i++) {
+                    arrayPush(result, a->elements[i]);
+                }
+                // Copy elements from second array
+                for (int i = 0; i < b->count; i++) {
+                    arrayPush(result, b->elements[i]);
+                }
+                push(vm, OBJ_VAL(result));
+                break;
+            }
+
             case OP_TRY: {
                 // Read catch offset
                 uint16_t catchOffset = (uint16_t)(frame->ip[0] << 8);

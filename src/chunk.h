@@ -95,6 +95,7 @@ typedef enum {
     OP_INDEX_SET,       // array[index] = value
     OP_ARRAY_LENGTH,    // Get array length
     OP_RANGE,           // Create array from range (start..end)
+    OP_ARRAY_CONCAT,    // Concatenate two arrays
 
     // Built-in
     OP_PRINT,

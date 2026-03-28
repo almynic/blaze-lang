@@ -678,10 +678,37 @@ static Type* checkArray(TypeChecker* checker, Expr* expr) {
         return createArrayType(createUnknownType());
     }
 
-    Type* elementType = checkExpr(checker, array->elements[0]);
+    // Get element type from first element
+    // If it's a spread, extract the element type from the spread array
+    Type* elementType = NULL;
+    Expr* firstElem = array->elements[0];
+    if (firstElem->kind == EXPR_SPREAD) {
+        Type* operandType = checkExpr(checker, firstElem->as.spread.operand);
+        if (operandType->kind != TYPE_ARRAY) {
+            typeError(checker, firstElem->line, "Spread operator can only be used on arrays.");
+            return createErrorType();
+        }
+        elementType = operandType->as.array.elementType;
+    } else {
+        elementType = checkExpr(checker, firstElem);
+    }
 
+    // Check remaining elements
     for (int i = 1; i < array->elementCount; i++) {
-        Type* elemType = checkExpr(checker, array->elements[i]);
+        Type* elemType = NULL;
+        Expr* elem = array->elements[i];
+
+        if (elem->kind == EXPR_SPREAD) {
+            Type* operandType = checkExpr(checker, elem->as.spread.operand);
+            if (operandType->kind != TYPE_ARRAY) {
+                typeError(checker, elem->line, "Spread operator can only be used on arrays.");
+                return createErrorType();
+            }
+            elemType = operandType->as.array.elementType;
+        } else {
+            elemType = checkExpr(checker, elem);
+        }
+
         if (!typesEqual(elemType, elementType)) {
             typeError(checker, expr->line, "Array elements must have the same type.");
             return createErrorType();
@@ -912,6 +939,16 @@ static Type* checkExpr(TypeChecker* checker, Expr* expr) {
         case EXPR_ARRAY:
             type = checkArray(checker, expr);
             break;
+        case EXPR_SPREAD:
+            // Spread expressions are checked within checkArray context
+            // If checked standalone, verify it's an array and return the array type
+            type = checkExpr(checker, expr->as.spread.operand);
+            if (type->kind != TYPE_ARRAY) {
+                typeError(checker, expr->line, "Spread operator can only be used on arrays.");
+                return createErrorType();
+            }
+            // Return the same array type (not the element type)
+            break;
         case EXPR_INDEX:
             type = checkIndex(checker, expr);
             break;
@@ -950,6 +987,7 @@ static Type* checkExpr(TypeChecker* checker, Expr* expr) {
         case EXPR_CALL:      expr->as.call.type = type; break;
         case EXPR_LAMBDA:    expr->as.lambda.type = type; break;
         case EXPR_ARRAY:     expr->as.array.type = type; break;
+        case EXPR_SPREAD:    expr->as.spread.type = type; break;
         case EXPR_INDEX:     expr->as.index.type = type; break;
         case EXPR_INDEX_SET: expr->as.index_set.type = type; break;
         case EXPR_GET:       expr->as.get.type = type; break;

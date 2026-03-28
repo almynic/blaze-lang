@@ -679,7 +679,16 @@ static Expr* arrayLiteral(Parser* parser, bool canAssign) {
                 elementCapacity = GROW_CAPACITY(oldCapacity);
                 elements = GROW_ARRAY(Expr*, elements, oldCapacity, elementCapacity);
             }
-            elements[elementCount++] = expression(parser);
+
+            // Check for spread operator
+            if (match(parser, TOKEN_DOT_DOT_DOT)) {
+                Token dots = parser->previous;
+                Expr* operand = expression(parser);
+                elements[elementCount++] = newSpreadExpr(dots, operand);
+            } else {
+                elements[elementCount++] = expression(parser);
+            }
+
             skipNewlines(parser);
         } while (match(parser, TOKEN_COMMA));
     }

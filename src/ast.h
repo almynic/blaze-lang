@@ -64,6 +64,7 @@ typedef enum {
     EXPR_CALL,              // func(args)
     EXPR_LAMBDA,            // (x) => x * 2
     EXPR_ARRAY,             // [1, 2, 3]
+    EXPR_SPREAD,            // ...arr
     EXPR_INDEX,             // array[index]
     EXPR_INDEX_SET,         // array[index] = value
     EXPR_GET,               // object.property
@@ -148,6 +149,12 @@ typedef struct {
 } ArrayExpr;
 
 typedef struct {
+    Token dots;              // ... token
+    Expr* operand;           // Expression being spread
+    Type* type;
+} SpreadExpr;
+
+typedef struct {
     Expr* object;
     Token bracket;
     Expr* index;
@@ -217,6 +224,7 @@ struct Expr {
         CallExpr call;
         LambdaExpr lambda;
         ArrayExpr array;
+        SpreadExpr spread;
         IndexExpr index;
         IndexSetExpr index_set;
         GetExpr get;
@@ -404,6 +412,7 @@ Expr* newCallExpr(Expr* callee, Token paren, Expr** arguments, int argCount);
 Expr* newLambdaExpr(Token arrow, Token* params, TypeNode** paramTypes,
                     int paramCount, TypeNode* returnType, Expr* body);
 Expr* newArrayExpr(Token bracket, Expr** elements, int elementCount);
+Expr* newSpreadExpr(Token dots, Expr* operand);
 Expr* newIndexExpr(Expr* object, Token bracket, Expr* index);
 Expr* newIndexSetExpr(Expr* object, Token bracket, Expr* index, Expr* value);
 Expr* newGetExpr(Expr* object, Token name, bool isOptional);

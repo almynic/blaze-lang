@@ -33,6 +33,7 @@ typedef enum {
     TOKEN_ARROW,            // ->
     TOKEN_FAT_ARROW,        // =>
     TOKEN_DOT_DOT,          // ..
+    TOKEN_DOT_DOT_DOT,      // ...
     TOKEN_AND,              // &&
     TOKEN_OR,               // ||
     TOKEN_PIPE,             // |
