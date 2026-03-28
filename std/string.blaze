@@ -1,0 +1,103 @@
+// Blaze Standard Library - String Functions
+
+// contains(s, sub) -> bool - check if string contains substring
+fn contains(s: string, sub: string) -> bool {
+    return indexOf(s, sub) >= 0
+}
+
+// isEmpty(s) -> bool - check if string is empty
+fn isEmpty(s: string) -> bool {
+    return len(s) == 0
+}
+
+// isBlank(s) -> bool - check if string is empty or only whitespace
+fn isBlank(s: string) -> bool {
+    return len(trim(s)) == 0
+}
+
+// padLeft(s, width, pad) -> string - pad string on the left to width
+fn padLeft(s: string, width: int, pad: string) -> string {
+    let result: string = s
+    while len(result) < width {
+        result = concat(pad, result)
+    }
+    return result
+}
+
+// padRight(s, width, pad) -> string - pad string on the right to width
+fn padRight(s: string, width: int, pad: string) -> string {
+    let result: string = s
+    while len(result) < width {
+        result = concat(result, pad)
+    }
+    return result
+}
+
+// center(s, width, pad) -> string - center string in width
+fn center(s: string, width: int, pad: string) -> string {
+    let diff: int = width - len(s)
+    if diff <= 0 {
+        return s
+    }
+    let leftPad: int = diff / 2
+    let rightPad: int = diff - leftPad
+    let result: string = s
+    let i: int = 0
+    while i < leftPad {
+        result = concat(pad, result)
+        i = i + 1
+    }
+    i = 0
+    while i < rightPad {
+        result = concat(result, pad)
+        i = i + 1
+    }
+    return result
+}
+
+// countOccurrences(s, sub) -> int - count occurrences of substring
+fn countOccurrences(s: string, sub: string) -> int {
+    let count: int = 0
+    let i: int = 0
+    let subLen: int = len(sub)
+    while i <= len(s) - subLen {
+        if substr(s, i, subLen) == sub {
+            count = count + 1
+            i = i + subLen
+        } else {
+            i = i + 1
+        }
+    }
+    return count
+}
+
+// reverse(s) -> string - reverse a string
+fn reverseString(s: string) -> string {
+    let result: string = ""
+    let i: int = len(s) - 1
+    while i >= 0 {
+        result = concat(result, charAt(s, i))
+        i = i - 1
+    }
+    return result
+}
+
+// capitalize(s) -> string - capitalize first character
+fn capitalize(s: string) -> string {
+    if len(s) == 0 {
+        return s
+    }
+    return concat(toUpper(charAt(s, 0)), substr(s, 1, len(s) - 1))
+}
+
+// lines(s) -> [string] - split string into lines (Note: returns array, may not work without proper array of strings support)
+// Commented out for now as we may not have [string] type support
+// fn lines(s: string) -> [string] {
+//     return split(s, "\n")
+// }
+
+// words(s) -> [string] - split string into words
+// Commented out for now as we may not have [string] type support
+// fn words(s: string) -> [string] {
+//     return split(s, " ")
+// }

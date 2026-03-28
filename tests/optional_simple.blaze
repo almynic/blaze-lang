@@ -1,0 +1,13 @@
+// Simple optional types test
+
+// Test 1: Null coalescing with nil
+let x = nil
+let y = x ?? 10
+print(y)
+
+// Test 2: Null coalescing with value
+let z = 5
+let w = z ?? 10
+print(w)
+
+print("Done!")

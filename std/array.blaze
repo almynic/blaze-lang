@@ -1,0 +1,199 @@
+// Blaze Standard Library - Array Functions
+
+// sum(arr) -> int - returns sum of all elements
+fn sum(arr: [int]) -> int {
+    let total: int = 0
+    for item in arr {
+        total = total + item
+    }
+    return total
+}
+
+// product(arr) -> int - returns product of all elements
+fn product(arr: [int]) -> int {
+    let total: int = 1
+    for item in arr {
+        total = total * item
+    }
+    return total
+}
+
+// average(arr) -> float - returns average of elements
+fn average(arr: [int]) -> float {
+    let total: int = sum(arr)
+    return toFloat(total) / toFloat(len(arr))
+}
+
+// range(start, end) -> array - creates array from start to end-1
+fn range(start: int, end: int) -> [int] {
+    let result: [int] = []
+    let i: int = start
+    while i < end {
+        push(result, i)
+        i = i + 1
+    }
+    return result
+}
+
+// fill(count, value) -> array - creates array with count copies of value
+fn fill(count: int, value: int) -> [int] {
+    let result: [int] = []
+    let i: int = 0
+    while i < count {
+        push(result, value)
+        i = i + 1
+    }
+    return result
+}
+
+// indexOfValue(arr, value) -> int - returns index of first occurrence (or -1)
+// Note: named indexOfValue to avoid conflict with native indexOf for strings
+fn indexOfValue(arr: [int], value: int) -> int {
+    let i: int = 0
+    for item in arr {
+        if item == value {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+// countValue(arr, value) -> int - counts occurrences of value
+fn countValue(arr: [int], value: int) -> int {
+    let c: int = 0
+    for item in arr {
+        if item == value {
+            c = c + 1
+        }
+    }
+    return c
+}
+
+// isEmpty(arr) -> bool - returns true if array is empty
+fn isEmpty(arr: [int]) -> bool {
+    return len(arr) == 0
+}
+
+// copy(arr) -> array - creates a shallow copy of the array
+fn copy(arr: [int]) -> [int] {
+    let result: [int] = []
+    for item in arr {
+        push(result, item)
+    }
+    return result
+}
+
+// concat(arr1, arr2) -> array - concatenates two arrays
+fn concatArrays(arr1: [int], arr2: [int]) -> [int] {
+    let result: [int] = copy(arr1)
+    for item in arr2 {
+        push(result, item)
+    }
+    return result
+}
+
+// take(arr, n) -> array - returns first n elements
+fn take(arr: [int], n: int) -> [int] {
+    let result: [int] = []
+    let i: int = 0
+    while i < n && i < len(arr) {
+        push(result, arr[i])
+        i = i + 1
+    }
+    return result
+}
+
+// drop(arr, n) -> array - returns array without first n elements
+fn drop(arr: [int], n: int) -> [int] {
+    let result: [int] = []
+    let i: int = n
+    while i < len(arr) {
+        push(result, arr[i])
+        i = i + 1
+    }
+    return result
+}
+
+// ============================================================================
+// Higher-Order Functions
+// ============================================================================
+
+// map(arr, fn) -> array - applies function to each element
+fn map(arr: [int], f: fn(int) -> int) -> [int] {
+    let result: [int] = []
+    for item in arr {
+        push(result, f(item))
+    }
+    return result
+}
+
+// filter(arr, predicate) -> array - keeps elements where predicate returns true
+fn filter(arr: [int], predicate: fn(int) -> bool) -> [int] {
+    let result: [int] = []
+    for item in arr {
+        if predicate(item) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+// reduce(arr, initial, accumulator) -> value - folds array to single value
+fn reduce(arr: [int], initial: int, accumulator: fn(int, int) -> int) -> int {
+    let acc: int = initial
+    for item in arr {
+        acc = accumulator(acc, item)
+    }
+    return acc
+}
+
+// forEach(arr, action) -> nil - executes action for each element
+fn forEach(arr: [int], action: fn(int) -> int) -> int {
+    for item in arr {
+        action(item)
+    }
+    return 0
+}
+
+// any(arr, predicate) -> bool - returns true if any element matches predicate
+fn any(arr: [int], predicate: fn(int) -> bool) -> bool {
+    for item in arr {
+        if predicate(item) {
+            return true
+        }
+    }
+    return false
+}
+
+// all(arr, predicate) -> bool - returns true if all elements match predicate
+fn all(arr: [int], predicate: fn(int) -> bool) -> bool {
+    for item in arr {
+        if !predicate(item) {
+            return false
+        }
+    }
+    return true
+}
+
+// find(arr, predicate) -> int - returns first element matching predicate (or -1)
+fn find(arr: [int], predicate: fn(int) -> bool) -> int {
+    for item in arr {
+        if predicate(item) {
+            return item
+        }
+    }
+    return -1
+}
+
+// findIndex(arr, predicate) -> int - returns index of first match (or -1)
+fn findIndex(arr: [int], predicate: fn(int) -> bool) -> int {
+    let i: int = 0
+    for item in arr {
+        if predicate(item) {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}

@@ -1,0 +1,57 @@
+// Test optional types in Blaze
+
+// Test 1: Optional type annotation
+let maybeInt: int? = nil
+print(maybeInt)  // nil
+/clear
+maybeInt = 42
+print(maybeInt)  // 42
+
+// Test 2: Null coalescing operator (??)
+let x: int? = nil
+let y = x ?? 10
+print(y)  // 10
+
+let z: int? = 5
+let w = z ?? 10
+print(w)  // 5
+
+// Test 3: Optional with string
+let maybeName: string? = nil
+let name = maybeName ?? "Anonymous"
+print(name)  // Anonymous
+
+let actualName: string? = "Alice"
+let displayName = actualName ?? "Unknown"
+print(displayName)  // Alice
+
+// Test 4: Optional chaining with class
+class Person {
+    name: string
+
+    fn init(n: string) {
+        this.name = n
+    }
+
+    fn greet() -> string {
+        return "Hello, " + this.name
+    }
+}
+
+let person: Person? = nil
+// With optional chaining, this should return nil instead of error
+// Note: this test might need adjustment based on exact semantics
+
+// Test 5: Nested null coalescing
+let a: int? = nil
+let b: int? = nil
+let c: int? = 100
+let result = a ?? b ?? c ?? 0
+print(result)  // 100
+
+// Test 6: Null coalescing with expressions
+let val: int? = nil
+let computed = val ?? (5 + 5)
+print(computed)  // 10
+
+print("All optional type tests passed!")

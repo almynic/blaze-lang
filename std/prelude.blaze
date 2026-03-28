@@ -1,0 +1,16 @@
+
+// Blaze Standard Library - Prelude
+// This module is automatically loaded on startup, making common functions available
+// without explicit imports.
+
+// Math functions (from std/math)
+import { sign, isEven, isOdd, gcd, lcm, factorial, fib, isPrime } from "std/math"
+import { square, cube, sumRange, lerp, clampf, minf, maxf } from "std/math"
+
+// Array functions (from std/array)
+import { sum, product, average, range, fill, copy, take, drop } from "std/array"
+import { map, filter, reduce, forEach, any, all, find, findIndex } from "std/array"
+
+// String functions (from std/string)
+import { contains, isEmpty, isBlank, padLeft, padRight, center } from "std/string"
+import { countOccurrences, reverseString, capitalize } from "std/string"

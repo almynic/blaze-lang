@@ -1,0 +1,128 @@
+// Comprehensive Blaze Language Test
+// Tests all major features of the language
+
+print("=== Blaze Compiler Comprehensive Test ===\n")
+
+// 1. Basic types and variables
+print("1. Basic types and variables")
+let x: int = 42
+let y: float = 3.14
+let name: string = "Blaze"
+let flag: bool = true
+print(x)
+print(y)
+print(name)
+print(flag)
+
+// 2. Arrays
+print("\n2. Arrays")
+let numbers: [int] = [1, 2, 3, 4, 5]
+print(numbers[0])
+print(numbers[4])
+print(len(numbers))
+
+// 3. Functions
+print("\n3. Functions")
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+print(add(10, 20))
+
+// 4. Lambdas
+print("\n4. Lambdas")
+let multiply = (a, b) => a * b
+print(multiply(6, 7))
+
+// 5. Higher-order functions
+print("\n5. Higher-order functions (from prelude)")
+let doubled = map([1, 2, 3, 4, 5], (x) => x * 2)
+print(doubled)
+
+let evens = filter([1, 2, 3, 4, 5, 6], (x) => isEven(x))
+print(evens)
+
+let total = reduce([1, 2, 3, 4, 5], 0, (acc, x) => acc + x)
+print(total)
+
+// 6. Union types
+print("\n6. Union types")
+let mixed: int | string = 100
+print(mixed)
+mixed = "hello"
+print(mixed)
+
+fn getLength(value: [int] | string) -> int {
+    return len(value)
+}
+print(getLength("test"))
+print(getLength([1, 2, 3]))
+
+// 7. Optional types
+print("\n7. Optional types")
+let maybe: int? = 42
+print(maybe)
+maybe = nil
+print(maybe)
+
+// 8. Classes and inheritance
+print("\n8. Classes and inheritance")
+class Animal {
+    fn speak() -> string {
+        return "Some sound"
+    }
+}
+
+class Dog extends Animal {
+    fn speak() -> string {
+        return "Woof!"
+    }
+}
+
+let dog = Dog()
+print(dog.speak())
+
+// 9. Match/case
+print("\n9. Match/case")
+fn testMatch(value: int) -> string {
+    match value {
+        1 => "one"
+        2 => "two"
+        3 => "three"
+        _ => "other"
+    }
+}
+print(testMatch(2))
+
+// 10. Try/catch/finally
+print("\n10. Try/catch/finally")
+try {
+    let result = 10 / 2
+    print("Division succeeded")
+} catch (e) {
+    print("Error caught")
+} finally {
+    print("Finally block executed")
+}
+
+// 11. For loops
+print("\n11. For loops")
+for i in [1, 2, 3] {
+    print(i)
+}
+
+// 12. While loops
+print("\n12. While loops")
+let counter = 0
+while counter < 3 {
+    print(counter)
+    counter = counter + 1
+}
+
+// 13. Modules and imports (prelude is auto-imported)
+print("\n13. Prelude functions")
+print(isPrime(17))
+print(factorial(5))
+print(sum([10, 20, 30]))
+print(capitalize("hello"))
+
+print("\n=== All Tests Passed! ===")

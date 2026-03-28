@@ -1,0 +1,5 @@
+let a: int? = nil
+let b: int? = nil
+let c: int? = 100
+let result = a ?? b ?? c ?? 0
+print(result)

@@ -1,0 +1,23 @@
+# Build artifacts
+build/
+cmake-build-debug/
+*.o
+*.out
+*.bin
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Executable
+blaze
+
+# History files
+.blaze_history

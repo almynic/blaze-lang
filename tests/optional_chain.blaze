@@ -1,0 +1,9 @@
+class Person {
+    name: string
+    fn init(n: string) {
+        this.name = n
+    }
+}
+let p: Person? = nil
+let name = p?.name
+print(name)
