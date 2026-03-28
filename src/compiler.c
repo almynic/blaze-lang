@@ -193,7 +193,7 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
 // ============================================================================
 
 static void compileExpr(Expr* expr);
-static void compileStmt(Stmt* stmt);
+static bool compileStmt(Stmt* stmt);  // Returns true if statement is a terminator
 static void compileMatchExpr(Expr* expr);
 
 static void compileLiteral(Expr* expr) {
@@ -975,7 +975,20 @@ static void compileVarStmt(Stmt* stmt) {
 static void compileBlockStmt(Stmt* stmt) {
     beginScope();
     for (int i = 0; i < stmt->as.block.count; i++) {
-        compileStmt(stmt->as.block.statements[i]);
+        bool isTerminator = compileStmt(stmt->as.block.statements[i]);
+
+        // Dead code elimination: warn and skip remaining statements after a terminator
+        if (isTerminator && i + 1 < stmt->as.block.count) {
+            // Optional: emit warning about unreachable code
+            Stmt* nextStmt = stmt->as.block.statements[i + 1];
+            if (nextStmt != NULL) {
+                // Note: This is a warning, not an error, so we don't set hadError
+                fprintf(stderr, "Warning [line %d]: Unreachable code after return/throw.\n",
+                        nextStmt->line);
+            }
+            // Stop compiling remaining statements in this block
+            break;
+        }
     }
     endScope(stmt->line);
 }
@@ -1139,7 +1152,17 @@ static void compileFunctionStmt(Stmt* stmt) {
     if (func->body != NULL && func->body->kind == STMT_BLOCK) {
         BlockStmt* block = &func->body->as.block;
         for (int i = 0; i < block->count; i++) {
-            compileStmt(block->statements[i]);
+            bool isTerminator = compileStmt(block->statements[i]);
+
+            // Dead code elimination in function bodies
+            if (isTerminator && i + 1 < block->count) {
+                Stmt* nextStmt = block->statements[i + 1];
+                if (nextStmt != NULL) {
+                    fprintf(stderr, "Warning [line %d]: Unreachable code after return/throw.\n",
+                            nextStmt->line);
+                }
+                break;
+            }
         }
     }
 
@@ -1206,7 +1229,17 @@ static void compileMethod(FunctionStmt* method, int line) {
     if (method->body != NULL && method->body->kind == STMT_BLOCK) {
         BlockStmt* block = &method->body->as.block;
         for (int i = 0; i < block->count; i++) {
-            compileStmt(block->statements[i]);
+            bool isTerminator = compileStmt(block->statements[i]);
+
+            // Dead code elimination in method bodies
+            if (isTerminator && i + 1 < block->count) {
+                Stmt* nextStmt = block->statements[i + 1];
+                if (nextStmt != NULL) {
+                    fprintf(stderr, "Warning [line %d]: Unreachable code after return/throw.\n",
+                            nextStmt->line);
+                }
+                break;
+            }
         }
     }
 
@@ -1427,54 +1460,56 @@ static void compileClassStmt(Stmt* stmt) {
     currentClass = currentClass->enclosing;
 }
 
-static void compileStmt(Stmt* stmt) {
-    if (stmt == NULL) return;
+static bool compileStmt(Stmt* stmt) {
+    if (stmt == NULL) return false;
 
     switch (stmt->kind) {
         case STMT_EXPRESSION:
             compileExpressionStmt(stmt);
-            break;
+            return false;
         case STMT_PRINT:
             compilePrintStmt(stmt);
-            break;
+            return false;
         case STMT_VAR:
             compileVarStmt(stmt);
-            break;
+            return false;
         case STMT_BLOCK:
             compileBlockStmt(stmt);
-            break;
+            return false;  // Blocks themselves don't terminate, their contents might
         case STMT_IF:
             compileIfStmt(stmt);
-            break;
+            return false;  // If statements don't unconditionally terminate
         case STMT_WHILE:
             compileWhileStmt(stmt);
-            break;
+            return false;
         case STMT_FOR:
             compileForStmt(stmt);
-            break;
+            return false;
         case STMT_FUNCTION:
             compileFunctionStmt(stmt);
-            break;
+            return false;
         case STMT_RETURN:
             compileReturnStmt(stmt);
-            break;
+            return true;  // Return is a terminator
         case STMT_CLASS:
             compileClassStmt(stmt);
-            break;
+            return false;
         case STMT_MATCH:
             compileMatchStmt(stmt);
-            break;
+            return false;
         case STMT_TRY:
             compileTryStmt(stmt);
-            break;
+            return false;
         case STMT_THROW:
             compileThrowStmt(stmt);
-            break;
+            return true;  // Throw is a terminator
         case STMT_IMPORT:
             // TODO: Module imports are processed before compilation
             // For now, this is a no-op as modules are loaded at the VM level
-            break;
+            return false;
     }
+
+    return false;
 }
 
 // ============================================================================
@@ -1517,7 +1552,17 @@ ObjFunction* compile(Stmt** statements, int count) {
     beginScope();
 
     for (int i = 0; i < count; i++) {
-        compileStmt(statements[i]);
+        bool isTerminator = compileStmt(statements[i]);
+
+        // Dead code elimination at top level
+        if (isTerminator && i + 1 < count) {
+            Stmt* nextStmt = statements[i + 1];
+            if (nextStmt != NULL) {
+                fprintf(stderr, "Warning [line %d]: Unreachable code after return/throw.\n",
+                        nextStmt->line);
+            }
+            break;
+        }
     }
 
     ObjFunction* function = endCompiler(0);
@@ -1534,7 +1579,17 @@ ObjFunction* compileRepl(Stmt** statements, int count) {
     // This allows them to persist between REPL inputs
 
     for (int i = 0; i < count; i++) {
-        compileStmt(statements[i]);
+        bool isTerminator = compileStmt(statements[i]);
+
+        // Dead code elimination in REPL
+        if (isTerminator && i + 1 < count) {
+            Stmt* nextStmt = statements[i + 1];
+            if (nextStmt != NULL) {
+                fprintf(stderr, "Warning [line %d]: Unreachable code after return/throw.\n",
+                        nextStmt->line);
+            }
+            break;
+        }
     }
 
     ObjFunction* function = endCompiler(0);

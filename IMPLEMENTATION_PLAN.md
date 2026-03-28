@@ -192,6 +192,7 @@ The Blaze compiler is **functionally complete** and production-ready! It's a sta
 - ✅ **Type narrowing** for union and optional types in conditionals
 - ✅ **String interpolation** with `${expression}` syntax
 - ✅ **Constant folding** optimization for compile-time evaluation
+- ✅ **Dead code elimination** removes unreachable code after returns/throws
 
 ### Known Limitations
 
@@ -205,7 +206,7 @@ The core compiler is complete and has excellent DX. These are optional enhanceme
 
 - **Generic types** (e.g., `Map<K, V>`, `Array<T>`) - Would require significant type system extensions
 - **Debug mode** with step-through execution and breakpoints
-- **Additional optimizations**: Dead code elimination, tail call optimization
+- **Additional optimizations**: Tail call optimization, loop unrolling
 - **NaN boxing** for value representation (performance optimization)
 - **Spread operator** for arrays (`...arr`)
 - **Destructuring** for arrays and objects
@@ -699,6 +700,74 @@ All tests pass successfully!
 ---
 
 ## Changelog
+
+### March 28, 2026 - Dead Code Elimination Implemented
+- **NEW FEATURE**: Dead code elimination - removes unreachable code after return/throw statements
+- Compiler detects and skips unreachable statements, producing smaller bytecode
+- Emits warnings to help developers identify dead code
+- Applied to all contexts: functions, methods, blocks, and top-level code
+
+How it works:
+- Compiler tracks whether a statement is a "terminator" (return or throw)
+- After a terminator, remaining statements in the same block are not compiled
+- Warning emitted for the first unreachable statement
+- Reduces bytecode size and helps catch logic errors
+
+Examples that trigger dead code elimination:
+```blaze
+fn example1() -> int {
+    return 42
+    print("never runs")  // Warning: Unreachable code after return/throw
+    let x = 10           // Also unreachable, not compiled
+}
+
+fn example2() -> string {
+    throw "error"
+    return "never"  // Warning: Unreachable code after return/throw
+}
+
+fn example3() -> int {
+    {
+        return 100
+        print("dead")  // Warning: Unreachable code after return/throw
+    }
+    return 200  // Also unreachable, not compiled
+}
+```
+
+Implementation details (src/compiler.c):
+- Modified `compileStmt()` to return bool indicating if statement is a terminator
+- Return statements return `true`, throw statements return `true`
+- All other statements return `false`
+- Modified statement compilation loops to check return value
+- After detecting terminator, emit warning and break out of loop
+
+Applied in:
+- `compileBlockStmt()` - regular blocks
+- `compileFunctionStmt()` - function bodies
+- `compileMethod()` - class method bodies
+- `compile()` - top-level script code
+- `compileRepl()` - REPL input
+
+Benefits:
+- Smaller bytecode (unreachable code not emitted)
+- Helps developers identify logic errors
+- Faster compilation (skips unnecessary work)
+- No runtime overhead
+
+Warning output:
+- Format: `Warning [line X]: Unreachable code after return/throw.`
+- Only warns once per dead code block (not for every line)
+- Warnings don't stop compilation (not errors)
+
+Testing:
+- Comprehensive test suite with 5 test categories
+- Tests functions, nested blocks, conditionals, throw statements
+- Warnings correctly emitted for dead code
+- All existing tests still pass
+
+This optimization catches common programming mistakes and produces more
+efficient bytecode automatically.
 
 ### March 28, 2026 - Constant Folding Optimization Implemented
 - **NEW FEATURE**: Constant folding - compile-time evaluation of constant expressions
