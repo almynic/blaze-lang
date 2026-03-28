@@ -359,6 +359,120 @@ typedef struct {
 static Expr* parsePrecedence(Parser* parser, Precedence precedence);
 static ParseRule* getRule(TokenType type);
 
+// Helper function to parse string interpolation
+// Converts "Hello, ${name}!" to "Hello, " + toString(name) + "!"
+static Expr* parseInterpolatedString(Parser* parser, Token stringToken) {
+    const char* start = stringToken.start + 1;  // Skip opening quote
+    int length = stringToken.length - 2;         // Remove both quotes
+    const char* end = start + length;
+
+    Expr* result = NULL;
+    const char* current = start;
+
+    while (current < end) {
+        // Find next interpolation or end of string
+        const char* interpStart = current;
+        while (interpStart < end && !(interpStart[0] == '$' && interpStart + 1 < end && interpStart[1] == '{')) {
+            interpStart++;
+        }
+
+        // Create literal for the string part before interpolation
+        if (interpStart > current) {
+            int partLen = interpStart - current;
+            ObjString* partStr = copyString(current, partLen);
+            Expr* partExpr = newLiteralExpr(stringToken, OBJ_VAL(partStr));
+
+            if (result == NULL) {
+                result = partExpr;
+            } else {
+                // Concatenate with previous part
+                Token plusToken = stringToken;
+                plusToken.type = TOKEN_PLUS;
+                result = newBinaryExpr(result, plusToken, partExpr);
+            }
+        }
+
+        // Check if we found an interpolation
+        if (interpStart < end && interpStart[0] == '$' && interpStart + 1 < end && interpStart[1] == '{') {
+            // Find the matching closing brace
+            const char* exprStart = interpStart + 2;  // Skip ${
+            const char* exprEnd = exprStart;
+            int braceDepth = 1;
+
+            while (exprEnd < end && braceDepth > 0) {
+                if (*exprEnd == '{') braceDepth++;
+                else if (*exprEnd == '}') braceDepth--;
+                if (braceDepth > 0) exprEnd++;
+            }
+
+            if (braceDepth != 0) {
+                error(parser, "Unterminated interpolation in string.");
+                return result ? result : newLiteralExpr(stringToken, OBJ_VAL(copyString("", 0)));
+            }
+
+            // Parse the expression inside ${}
+            int exprLen = exprEnd - exprStart;
+            if (exprLen > 0) {
+                // Create a temporary scanner for the interpolated expression
+                Scanner tempScanner;
+                initScanner(&tempScanner, exprStart);
+                tempScanner.start = exprStart;
+                tempScanner.current = exprStart;
+                tempScanner.line = stringToken.line;
+
+                // Save parser state
+                Scanner savedScanner = parser->scanner;
+                Token savedCurrent = parser->current;
+                Token savedPrevious = parser->previous;
+
+                // Set up parser to scan the interpolated expression
+                parser->scanner = tempScanner;
+                advance(parser);  // Prime the parser
+
+                // Parse the expression
+                Expr* interpExpr = expression(parser);
+
+                // Wrap the expression in toString() call
+                Token toStringName = stringToken;
+                toStringName.type = TOKEN_IDENTIFIER;
+                toStringName.start = "toString";
+                toStringName.length = 8;
+                Expr* toStringVar = newVariableExpr(toStringName);
+
+                Expr** args = ALLOCATE(Expr*, 1);
+                args[0] = interpExpr;
+                Expr* toStringCall = newCallExpr(toStringVar, stringToken, args, 1);
+
+                // Restore parser state
+                parser->scanner = savedScanner;
+                parser->current = savedCurrent;
+                parser->previous = savedPrevious;
+
+                // Concatenate with result
+                if (result == NULL) {
+                    result = toStringCall;
+                } else {
+                    Token plusToken = stringToken;
+                    plusToken.type = TOKEN_PLUS;
+                    result = newBinaryExpr(result, plusToken, toStringCall);
+                }
+            }
+
+            current = exprEnd + 1;  // Move past the closing }
+        } else {
+            break;  // No more interpolations
+        }
+    }
+
+    // If no interpolations were found, return a simple string literal
+    if (result == NULL) {
+        ObjString* string = copyString(start, length);
+        result = newLiteralExpr(stringToken, OBJ_VAL(string));
+    }
+
+    return result;
+}
+
 static Expr* literal(Parser* parser, bool canAssign) {
     (void)canAssign;
     Token token = parser->previous;
@@ -385,7 +499,23 @@ static Expr* literal(Parser* parser, bool canAssign) {
             break;
         }
         case TOKEN_STRING: {
-            // String includes quotes, so skip them: token.start + 1, token.length - 2
+            // Check if string contains interpolations
+            const char* str = token.start + 1;  // Skip opening quote
+            int len = token.length - 2;          // Remove both quotes
+            bool hasInterpolation = false;
+
+            for (int i = 0; i < len - 1; i++) {
+                if (str[i] == '$' && str[i + 1] == '{') {
+                    hasInterpolation = true;
+                    break;
+                }
+            }
+
+            if (hasInterpolation) {
+                return parseInterpolatedString(parser, token);
+            }
+
+            // Regular string literal
             ObjString* string = copyString(token.start + 1, token.length - 2);
             value = OBJ_VAL(string);
             break;

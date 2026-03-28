@@ -40,6 +40,10 @@ cmake -B build && cmake --build build
 let x = 42
 let name = "Blaze"
 
+// String interpolation
+let greeting = "Hello, ${name}!"
+let info = "The answer is ${x * 2}"
+
 // Functions
 fn fibonacci(n: int) -> int {
     if n <= 1 {
@@ -186,6 +190,7 @@ The Blaze compiler is **functionally complete** and production-ready! It's a sta
 - ✅ **Context-aware error messages** with code snippets and helpful hints
 - ✅ **String interning** for efficient string comparison and memory usage
 - ✅ **Type narrowing** for union and optional types in conditionals
+- ✅ **String interpolation** with `${expression}` syntax
 
 ### Known Limitations
 
@@ -203,7 +208,6 @@ The core compiler is complete and has excellent DX. These are optional enhanceme
 - **NaN boxing** for value representation (performance optimization)
 - **Spread operator** for arrays (`...arr`)
 - **Destructuring** for arrays and objects
-- **String interpolation** (`"Hello, ${name}!"`)
 
 ### Architecture Decision: Standard Library
 
@@ -694,6 +698,56 @@ All tests pass successfully!
 ---
 
 ## Changelog
+
+### March 28, 2026 - String Interpolation Implemented
+- **NEW FEATURE**: String interpolation - embed expressions directly in strings
+- Use `${expression}` syntax to interpolate any expression into a string
+- Expressions are automatically converted to strings using `toString()`
+- Supports all expression types: variables, literals, arithmetic, function calls
+- Multiple interpolations in a single string
+- Cleaner, more readable string concatenation
+
+Syntax examples:
+```blaze
+// Variables
+let name = "Alice"
+let greeting = "Hello, ${name}!"  // "Hello, Alice!"
+
+// Expressions
+let x = 10
+let info = "${x} * 2 = ${x * 2}"  // "10 * 2 = 20"
+
+// Function calls
+fn double(n: int) -> int { return n * 2 }
+let result = "Double of 5 is ${double(5)}"  // "Double of 5 is 10"
+
+// Multiple interpolations
+let a = "foo"
+let b = "bar"
+let combined = "${a} and ${b}"  // "foo and bar"
+```
+
+Implementation details:
+- Parser detects `${...}` patterns in string literals
+- Converts to concatenation: `"Hello, ${name}!"` → `"Hello, " + toString(name) + "!"`
+- No runtime overhead beyond normal string concatenation
+- Supports nested braces in expressions
+- Error handling for unterminated interpolations
+
+Parser changes (src/parser.c):
+- Added `parseInterpolatedString()` to handle interpolation parsing
+- Modified `literal()` to detect and route interpolated strings
+- Creates binary expression trees for concatenation
+
+Compiler changes (src/compiler.c):
+- Modified `compileLiteral()` to use pre-computed values for string parts
+- Fixed bug where token content was used instead of literal value
+
+Benefits:
+- Much cleaner syntax than manual concatenation
+- Reduced cognitive load when building complex strings
+- Matches modern language conventions (JS, Python, Rust, etc.)
+- Zero performance overhead (same as manual concatenation)
 
 ### March 28, 2026 - Type Narrowing Implemented
 - **NEW FEATURE**: Type narrowing - automatic type refinement in conditional blocks

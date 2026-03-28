@@ -216,11 +216,16 @@ static void compileLiteral(Expr* expr) {
             emitConstant(expr->line, FLOAT_VAL(strtod(lit->token.start, NULL)));
             break;
         case TOKEN_STRING: {
-            // Create string object (skip the quotes)
-            const char* start = lit->token.start + 1;
-            int length = lit->token.length - 2;
-            ObjString* string = copyString(start, length);
-            emitConstant(expr->line, OBJ_VAL(string));
+            // Use the value directly if it's already set (for interpolated strings)
+            // Otherwise, create string object from token (skip the quotes)
+            if (IS_OBJ(lit->value) && AS_OBJ(lit->value)->type == OBJ_STRING) {
+                emitConstant(expr->line, lit->value);
+            } else {
+                const char* start = lit->token.start + 1;
+                int length = lit->token.length - 2;
+                ObjString* string = copyString(start, length);
+                emitConstant(expr->line, OBJ_VAL(string));
+            }
             break;
         }
         default:
