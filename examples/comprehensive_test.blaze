@@ -81,17 +81,39 @@ class Dog extends Animal {
 let dog = Dog()
 print(dog.speak())
 
-// 9. Match/case
-print("\n9. Match/case")
+// 9. Match/case (statement)
+print("\n9. Match/case (statement)")
 fn testMatch(value: int) -> string {
+    let result: string
     match value {
-        1 => "one"
-        2 => "two"
-        3 => "three"
+        1 => result = "one"
+        2 => result = "two"
+        3 => result = "three"
+        _ => result = "other"
+    }
+    return result
+}
+print(testMatch(2))
+
+// 9b. Match expressions (NEW!)
+print("\n9b. Match expressions")
+fn getLabel(n: int) -> string {
+    return match n {
+        1 => "first"
+        2 => "second"
+        3 => "third"
         _ => "other"
     }
 }
-print(testMatch(2))
+print(getLabel(2))
+
+let value = match 42 {
+    10 => "ten"
+    20 => "twenty"
+    42 => "the answer"
+    _ => "unknown"
+}
+print(value)
 
 // 10. Try/catch/finally
 print("\n10. Try/catch/finally")

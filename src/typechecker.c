@@ -196,6 +196,7 @@ Type* resolveTypeNode(TypeChecker* checker, TypeNode* node) {
 // ============================================================================
 
 static Type* checkExpr(TypeChecker* checker, Expr* expr);
+static Type* checkMatch(TypeChecker* checker, Expr* expr);
 
 static Type* checkLiteral(TypeChecker* checker, Expr* expr) {
     (void)checker;
@@ -617,6 +618,61 @@ static Type* checkLambda(TypeChecker* checker, Expr* expr) {
     return createFunctionType(paramTypes, lambda->paramCount, returnType);
 }
 
+static Type* checkMatch(TypeChecker* checker, Expr* expr) {
+    MatchExpr* match = &expr->as.match;
+
+    // Check the value being matched
+    Type* matchValueType = checkExpr(checker, match->matchValue);
+
+    if (match->caseCount == 0) {
+        typeError(checker, expr->line, "Match expression must have at least one case.");
+        return createErrorType();
+    }
+
+    // Check all case patterns and collect result types
+    Type** resultTypes = ALLOCATE(Type*, match->caseCount);
+    int resultCount = 0;
+
+    for (int i = 0; i < match->caseCount; i++) {
+        ExprCaseClause* caseClause = &match->cases[i];
+
+        // Check pattern (unless it's a wildcard)
+        if (!caseClause->isWildcard) {
+            Type* patternType = checkExpr(checker, caseClause->pattern);
+
+            // Pattern should be assignable to match value type
+            if (!typeIsAssignableTo(patternType, matchValueType)) {
+                typeError(checker, expr->line,
+                    "Match pattern type does not match the value being matched.");
+            }
+        }
+
+        // Check the result value expression
+        Type* valueType = checkExpr(checker, caseClause->value);
+        resultTypes[resultCount++] = valueType;
+    }
+
+    // Determine the result type: if all arms return the same type, use that;
+    // otherwise create a union type
+    Type* resultType = resultTypes[0];
+
+    for (int i = 1; i < resultCount; i++) {
+        if (!typesEqual(resultType, resultTypes[i])) {
+            // Types differ - create a union type
+            Type** unionTypes = ALLOCATE(Type*, resultCount);
+            for (int j = 0; j < resultCount; j++) {
+                unionTypes[j] = resultTypes[j];
+            }
+            resultType = createUnionType(unionTypes, resultCount);
+            break;
+        }
+    }
+
+    FREE_ARRAY(Type*, resultTypes, match->caseCount);
+
+    return resultType;
+}
+
 static Type* checkExpr(TypeChecker* checker, Expr* expr) {
     if (expr == NULL) return createErrorType();
 
@@ -676,6 +732,9 @@ static Type* checkExpr(TypeChecker* checker, Expr* expr) {
             // TODO: Implement super type checking
             type = createUnknownType();
             break;
+        case EXPR_MATCH:
+            type = checkMatch(checker, expr);
+            break;
     }
 
     // Store the type in the expression-specific field for use by the compiler
@@ -697,6 +756,7 @@ static Type* checkExpr(TypeChecker* checker, Expr* expr) {
         case EXPR_SET:       expr->as.set.type = type; break;
         case EXPR_THIS:      expr->as.this_.type = type; break;
         case EXPR_SUPER:     expr->as.super_.type = type; break;
+        case EXPR_MATCH:     expr->as.match.type = type; break;
     }
 
     return type;

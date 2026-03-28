@@ -194,6 +194,7 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
 
 static void compileExpr(Expr* expr);
 static void compileStmt(Stmt* stmt);
+static void compileMatchExpr(Expr* expr);
 
 static void compileLiteral(Expr* expr) {
     LiteralExpr* lit = &expr->as.literal;
@@ -609,7 +610,66 @@ static void compileExpr(Expr* expr) {
             emitBytes(expr->line, OP_GET_SUPER, makeConstant(OBJ_VAL(methodName)));
             break;
         }
+        case EXPR_MATCH:
+            compileMatchExpr(expr);
+            break;
     }
+}
+
+static void compileMatchExpr(Expr* expr) {
+    MatchExpr* match = &expr->as.match;
+
+    // Compile the value to match (leaves it on stack)
+    compileExpr(match->matchValue);
+
+    // Store end jumps to patch later
+    int* endJumps = ALLOCATE(int, match->caseCount);
+    int endJumpCount = 0;
+
+    for (int i = 0; i < match->caseCount; i++) {
+        ExprCaseClause* c = &match->cases[i];
+
+        if (c->isWildcard) {
+            // Wildcard: pop the value and evaluate the result expression
+            emitByte(expr->line, OP_POP);
+            compileExpr(c->value);
+            // No need to jump - wildcard should be last
+        } else {
+            // Duplicate the value for comparison
+            emitByte(expr->line, OP_DUP);
+            // Compile the pattern
+            compileExpr(c->pattern);
+            // Compare
+            emitByte(expr->line, OP_EQUAL);
+            // Jump to next case if not equal
+            int nextCase = emitJump(expr->line, OP_JUMP_IF_FALSE);
+            // Pop the comparison result (true)
+            emitByte(expr->line, OP_POP);
+            // Pop the duplicated value
+            emitByte(expr->line, OP_POP);
+            // Compile the result expression (leaves value on stack)
+            compileExpr(c->value);
+            // Jump to end
+            endJumps[endJumpCount++] = emitJump(expr->line, OP_JUMP);
+            // Patch next case jump
+            patchJump(nextCase);
+            // Pop the comparison result (false)
+            emitByte(expr->line, OP_POP);
+        }
+    }
+
+    // If no wildcard and no match, pop the value and push nil
+    if (match->caseCount > 0 && !match->cases[match->caseCount - 1].isWildcard) {
+        emitByte(expr->line, OP_POP);
+        emitByte(expr->line, OP_NIL);  // Default to nil if no match
+    }
+
+    // Patch all end jumps
+    for (int i = 0; i < endJumpCount; i++) {
+        patchJump(endJumps[i]);
+    }
+
+    FREE_ARRAY(int, endJumps, match->caseCount);
 }
 
 // ============================================================================

@@ -240,6 +240,16 @@ Expr* newSuperExpr(Token keyword, Token method) {
     return expr;
 }
 
+Expr* newMatchExpr(Token keyword, Expr* matchValue, ExprCaseClause* cases, int caseCount) {
+    Expr* expr = allocateExpr(EXPR_MATCH, keyword.line);
+    expr->as.match.keyword = keyword;
+    expr->as.match.matchValue = matchValue;
+    expr->as.match.cases = cases;
+    expr->as.match.caseCount = caseCount;
+    expr->as.match.type = NULL;
+    return expr;
+}
+
 void freeExpr(Expr* expr) {
     if (expr == NULL) return;
 
@@ -309,6 +319,16 @@ void freeExpr(Expr* expr) {
             break;
         case EXPR_THIS:
         case EXPR_SUPER:
+            break;
+        case EXPR_MATCH:
+            freeExpr(expr->as.match.matchValue);
+            for (int i = 0; i < expr->as.match.caseCount; i++) {
+                if (expr->as.match.cases[i].pattern != NULL) {
+                    freeExpr(expr->as.match.cases[i].pattern);
+                }
+                freeExpr(expr->as.match.cases[i].value);
+            }
+            FREE_ARRAY(ExprCaseClause, expr->as.match.cases, expr->as.match.caseCount);
             break;
     }
     FREE(Expr, expr);

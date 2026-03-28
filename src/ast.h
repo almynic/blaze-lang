@@ -70,6 +70,7 @@ typedef enum {
     EXPR_SET,               // object.property = value
     EXPR_THIS,              // this
     EXPR_SUPER,             // super.method
+    EXPR_MATCH,             // match expr { ... }
 } ExprKind;
 
 typedef struct {
@@ -186,6 +187,21 @@ typedef struct {
     Type* type;
 } SuperExpr;
 
+// Case clause for match expressions
+typedef struct {
+    Expr* pattern;          // Literal pattern (int, bool, string) or NULL for wildcard
+    bool isWildcard;        // true if this is the _ pattern
+    Expr* value;            // Expression to evaluate if pattern matches
+} ExprCaseClause;
+
+typedef struct {
+    Token keyword;
+    Expr* matchValue;       // Value being matched
+    ExprCaseClause* cases;
+    int caseCount;
+    Type* type;             // Result type (all arms must be compatible)
+} MatchExpr;
+
 struct Expr {
     ExprKind kind;
     int line;
@@ -207,6 +223,7 @@ struct Expr {
         SetExpr set;
         ThisExpr this_;
         SuperExpr super_;
+        MatchExpr match;
     } as;
 };
 
@@ -393,6 +410,7 @@ Expr* newGetExpr(Expr* object, Token name, bool isOptional);
 Expr* newSetExpr(Expr* object, Token name, Expr* value);
 Expr* newThisExpr(Token keyword);
 Expr* newSuperExpr(Token keyword, Token method);
+Expr* newMatchExpr(Token keyword, Expr* matchValue, ExprCaseClause* cases, int caseCount);
 void freeExpr(Expr* expr);
 
 // Statements

@@ -60,11 +60,26 @@ value = "hello"  // Valid!
 let maybe: int? = nil
 let result = maybe ?? 42
 
-// Pattern matching
+// Pattern matching (statement)
 match value {
     1 => print("one")
     2 => print("two")
     _ => print("other")
+}
+
+// Match expressions (NEW!)
+let result = match value {
+    1 => "one"
+    2 => "two"
+    _ => "other"
+}
+
+fn getDay(n: int) -> string {
+    return match n {
+        1 => "Monday"
+        2 => "Tuesday"
+        _ => "Weekend"
+    }
 }
 
 // Classes and inheritance
@@ -127,7 +142,7 @@ The Blaze compiler is **functionally complete** and production-ready! It's a sta
 - ✅ Classes, closures, and inheritance (including super calls)
 - ✅ Garbage collection (mark-and-sweep)
 - ✅ Lambda expressions with closures and type inference
-- ✅ Match/case statements with pattern matching (as statements)
+- ✅ Match/case statements and **match expressions** with pattern matching
 - ✅ For-in loops with proper array iteration
 - ✅ Index assignment for arrays
 - ✅ Range syntax (start..end)
@@ -150,26 +165,15 @@ The Blaze compiler is **functionally complete** and production-ready! It's a sta
 
 These are current design choices or limitations:
 
-- **Match statements are not expressions**: Match must be used as a statement. To return a value from a match, use variable assignment:
-  ```blaze
-  fn getLabel(x: int) -> string {
-      let result: string
-      match x {
-          1 => result = "one"
-          2 => result = "two"
-          _ => result = "other"
-      }
-      return result
-  }
-  ```
 - **Finally blocks and early returns**: Finally blocks don't execute on early return/break (would require more complex bytecode)
 - **Type narrowing**: Union types don't support automatic type narrowing in conditionals yet
+- **String literal comparison**: String literals are not interned, so `"hello" == "hello"` returns false. Use variables or the string comparison functions from std/string.blaze for now.
 
 ### Optional Future Enhancements
 
 The core compiler is complete and has excellent DX. These are optional enhancements:
 
-- **Match expressions** (allow match to return values directly)
+- **String interning** (fix string literal comparison issue)
 - **Generic types** (e.g., `Map<K, V>`, `Array<T>`) - Would require significant type system extensions
 - **Type narrowing** in conditionals for union types
 - **Debug mode** with step-through execution and breakpoints
@@ -670,6 +674,34 @@ All tests pass successfully!
 ---
 
 ## Changelog
+
+### March 28, 2026 - Match Expressions Implemented
+- **NEW FEATURE**: Match expressions - match can now be used as an expression that returns a value
+- Updated parser to support match in expression context
+- Added EXPR_MATCH to AST with ExprCaseClause for expression-based case arms
+- Implemented type checking for match expressions (all arms must return compatible types)
+- Compiler generates bytecode that leaves result value on stack
+- Updated comprehensive test suite with match expression examples
+- Fixed segmentation fault bug in newExpressionStmt when expression is NULL
+
+Examples:
+```blaze
+// Match as expression
+let day = match n {
+    1 => "Monday"
+    2 => "Tuesday"
+    _ => "Weekend"
+}
+
+// Match in return statement
+fn getLabel(x: int) -> string {
+    return match x {
+        1 => "one"
+        2 => "two"
+        _ => "other"
+    }
+}
+```
 
 ### March 28, 2026 - Implementation Plan Update
 - Updated plan to reflect production-ready status

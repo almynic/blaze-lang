@@ -210,6 +210,7 @@ static Expr* expression(Parser* parser);
 static Stmt* declaration(Parser* parser);
 static Stmt* statement(Parser* parser);
 static TypeNode* typeAnnotation(Parser* parser);
+static Expr* matchExpression(Parser* parser);
 
 // ============================================================================
 // Type Parsing
@@ -509,6 +510,11 @@ static Expr* superExpr(Parser* parser, bool canAssign) {
     return newSuperExpr(keyword, method);
 }
 
+static Expr* matchExpr(Parser* parser, bool canAssign) {
+    (void)canAssign;
+    return matchExpression(parser);
+}
+
 static Expr* unary(Parser* parser, bool canAssign) {
     (void)canAssign;
     Token op = parser->previous;
@@ -662,7 +668,7 @@ ParseRule rules[] = {
     [TOKEN_SUPER]         = {superExpr, NULL,  PREC_NONE},
     [TOKEN_IMPORT]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_MODULE]        = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_MATCH]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_MATCH]         = {matchExpr, NULL,  PREC_NONE},
     [TOKEN_TRUE]          = {literal,  NULL,   PREC_NONE},
     [TOKEN_FALSE]         = {literal,  NULL,   PREC_NONE},
     [TOKEN_NIL]           = {literal,  NULL,   PREC_NONE},
@@ -1099,6 +1105,69 @@ static Stmt* matchStatement(Parser* parser) {
     consume(parser, TOKEN_RIGHT_BRACE, "Expected '}' after match cases.");
 
     return newMatchStmt(keyword, value, cases, count);
+}
+
+static Expr* matchExpression(Parser* parser) {
+    Token keyword = parser->previous;
+
+    // Parse the value to match
+    Expr* value = expression(parser);
+
+    consume(parser, TOKEN_LEFT_BRACE, "Expected '{' after match value.");
+    skipNewlines(parser);
+
+    // Parse case clauses as expressions
+    int capacity = 8;
+    int count = 0;
+    ExprCaseClause* cases = ALLOCATE(ExprCaseClause, capacity);
+
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+        if (count >= capacity) {
+            int oldCapacity = capacity;
+            capacity = GROW_CAPACITY(oldCapacity);
+            cases = GROW_ARRAY(ExprCaseClause, cases, oldCapacity, capacity);
+        }
+
+        // Check for wildcard pattern '_'
+        if (check(parser, TOKEN_IDENTIFIER)) {
+            Token t = parser->current;
+            if (t.length == 1 && t.start[0] == '_') {
+                advance(parser);  // consume _
+                cases[count].pattern = NULL;
+                cases[count].isWildcard = true;
+            } else {
+                // Not a wildcard - parse as literal expression
+                cases[count].pattern = parsePrecedence(parser, PREC_PRIMARY);
+                cases[count].isWildcard = false;
+            }
+        } else {
+            // Literal pattern (numbers, strings, booleans)
+            cases[count].pattern = parsePrecedence(parser, PREC_PRIMARY);
+            cases[count].isWildcard = false;
+        }
+
+        // Expect '=>' followed by an expression
+        consume(parser, TOKEN_FAT_ARROW, "Expected '=>' after match pattern in match expression.");
+
+        // Parse the value expression for this case
+        cases[count].value = expression(parser);
+
+        count++;
+
+        // Optional comma or newline between cases
+        if (!check(parser, TOKEN_RIGHT_BRACE)) {
+            if (match(parser, TOKEN_COMMA)) {
+                skipNewlines(parser);
+            } else {
+                consumeNewlineOrSemicolon(parser);
+            }
+        }
+        skipNewlines(parser);
+    }
+
+    consume(parser, TOKEN_RIGHT_BRACE, "Expected '}' after match cases.");
+
+    return newMatchExpr(keyword, value, cases, count);
 }
 
 static Stmt* tryStatement(Parser* parser) {
