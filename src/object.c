@@ -43,6 +43,16 @@ static Obj* allocateObject(size_t size, ObjType type) {
 #endif
 
     Obj* object = (Obj*)reallocate(NULL, 0, size);
+
+    // NaN boxing: Verify pointer fits in 48 bits
+    // Modern x86-64 and ARM64 use 48-bit virtual addressing, so this should always pass
+    uintptr_t ptr = (uintptr_t)object;
+    if (ptr > 0x0000FFFFFFFFFFFFULL) {
+        fprintf(stderr, "Fatal: Object pointer exceeds 48 bits: %p\n", object);
+        fprintf(stderr, "This system's pointer addressing exceeds NaN boxing limitations.\n");
+        exit(1);
+    }
+
     object->type = type;
     object->isMarked = false;
     object->next = objects;

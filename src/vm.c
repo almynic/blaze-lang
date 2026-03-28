@@ -1216,8 +1216,10 @@ static InterpretResult executeLegacy(VM* vm) {
 
 #define BINARY_OP_INT(op) \
     do { \
-        int64_t b = AS_INT(pop(vm)); \
-        int64_t a = AS_INT(pop(vm)); \
+        Value _vb = pop(vm); \
+        Value _va = pop(vm); \
+        int64_t b = AS_INT(_vb); \
+        int64_t a = AS_INT(_va); \
         push(vm, INT_VAL(a op b)); \
     } while (false)
 
@@ -1636,8 +1638,10 @@ static InterpretResult executeWithFrames(VM* vm) {
 
 #define BINARY_OP_INT(op) \
     do { \
-        int64_t b = AS_INT(pop(vm)); \
-        int64_t a = AS_INT(pop(vm)); \
+        Value _vb = pop(vm); \
+        Value _va = pop(vm); \
+        int64_t b = AS_INT(_vb); \
+        int64_t a = AS_INT(_va); \
         push(vm, INT_VAL(a op b)); \
     } while (false)
 

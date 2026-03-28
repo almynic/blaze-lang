@@ -390,12 +390,18 @@ static Type* checkLiteral(TypeChecker* checker, Expr* expr) {
     (void)checker;
     LiteralExpr* lit = &expr->as.literal;
 
-    switch (lit->value.type) {
-        case VAL_NIL:   return createNilType();
-        case VAL_BOOL:  return createBoolType();
-        case VAL_INT:   return createIntType();
-        case VAL_FLOAT: return createFloatType();
-        case VAL_OBJ:   return createStringType(); // Assuming string for now
+
+    // Get type from literal value (NaN boxed)
+    if (IS_NIL(lit->value)) {
+        return createNilType();
+    } else if (IS_BOOL(lit->value)) {
+        return createBoolType();
+    } else if (IS_INT(lit->value)) {
+        return createIntType();
+    } else if (IS_FLOAT(lit->value)) {
+        return createFloatType();
+    } else if (IS_OBJ(lit->value)) {
+        return createStringType(); // Assuming string for now
     }
 
     return createErrorType();

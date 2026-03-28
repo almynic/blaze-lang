@@ -26,40 +26,38 @@ void freeValueArray(ValueArray* array) {
 }
 
 void printValue(Value value) {
-    switch (value.type) {
-        case VAL_NIL:
-            printf("nil");
-            break;
-        case VAL_BOOL:
-            printf(AS_BOOL(value) ? "true" : "false");
-            break;
-        case VAL_INT:
-            printf("%lld", (long long)AS_INT(value));
-            break;
-        case VAL_FLOAT:
-            printf("%g", AS_FLOAT(value));
-            break;
-        case VAL_OBJ:
-            printObject(value);
-            break;
+    if (IS_NIL(value)) {
+        printf("nil");
+    } else if (IS_BOOL(value)) {
+        printf(AS_BOOL(value) ? "true" : "false");
+    } else if (IS_INT(value)) {
+        printf("%lld", (long long)AS_INT(value));
+    } else if (IS_OBJ(value)) {
+        printObject(value);
+    } else {
+        // Must be a float (not a quiet NaN)
+        printf("%g", AS_FLOAT(value));
     }
 }
 
 bool valuesEqual(Value a, Value b) {
-    if (a.type != b.type) {
-        // Allow int/float comparison
-        if (IS_NUMBER(a) && IS_NUMBER(b)) {
-            return AS_NUMBER(a) == AS_NUMBER(b);
-        }
-        return false;
+    // Fast path: bit-identical values are equal
+    // This handles nil, bool, and same-type int/obj comparisons
+    if (a == b) return true;
+
+    // NaN != NaN (IEEE 754 semantics)
+    if (IS_FLOAT(a) && IS_FLOAT(b)) {
+        double fa = AS_FLOAT(a);
+        double fb = AS_FLOAT(b);
+        // Handle NaN properly: NaN != NaN
+        if (fa != fa && fb != fb) return false;  // Both NaN
+        return fa == fb;
     }
 
-    switch (a.type) {
-        case VAL_NIL:   return true;
-        case VAL_BOOL:  return AS_BOOL(a) == AS_BOOL(b);
-        case VAL_INT:   return AS_INT(a) == AS_INT(b);
-        case VAL_FLOAT: return AS_FLOAT(a) == AS_FLOAT(b);
-        case VAL_OBJ:   return AS_OBJ(a) == AS_OBJ(b); // Pointer comparison for now
-        default:        return false;
+    // Mixed int/float comparison
+    if (IS_NUMBER(a) && IS_NUMBER(b)) {
+        return AS_NUMBER(a) == AS_NUMBER(b);
     }
+
+    return false;
 }

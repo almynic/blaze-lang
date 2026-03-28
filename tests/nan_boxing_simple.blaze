@@ -1,0 +1,43 @@
+// Simple NaN Boxing Test
+print("=== Basic NaN Boxing Test ===\n")
+
+// Test 1: All basic types
+print("Test 1: Basic types")
+print(nil)
+print(false)
+print(true)
+print(42)
+print(-42)
+print(3.14)
+print("hello")
+
+// Test 2: Arithmetic
+print("\nTest 2: Arithmetic")
+print(10 + 20)
+print(20 - 5)
+print(4 * 5)
+print(20 / 4)
+
+// Test 3: Variables
+print("\nTest 3: Variables")
+let a = 100
+let b = 200
+print(a)
+print(b)
+print(a + b)
+
+// Test 4: Comparisons
+print("\nTest 4: Comparisons")
+print(10 < 20)
+print(20 > 10)
+print(10 == 10)
+print(true == true)
+
+// Test 5: Functions
+print("\nTest 5: Functions")
+fn add(x: int, y: int) -> int {
+    return x + y
+}
+print(add(15, 25))
+
+print("\n=== Tests Complete ===")
