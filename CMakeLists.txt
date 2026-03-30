@@ -9,50 +9,58 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Source files
+# Source files (grouped under src/<module>/ — see src/README.md)
 set(BLAZE_SOURCES
     main.c
-    src/memory.c
-    src/value.c
-    src/types.c
-    src/chunk.c
-    src/debug.c
-    src/scanner.c
-    src/ast.c
-    src/parser.c
-    src/typechecker.c
-    src/generic.c
-    src/compiler.c
-    src/vm.c
-    src/object.c
-    src/module.c
-    src/colors.c
+    src/base/memory.c
+    src/base/value.c
+    src/base/chunk.c
+    src/semantics/types.c
+    src/runtime/debug.c
+    src/syntax/scanner.c
+    src/syntax/ast.c
+    src/syntax/parser.c
+    src/semantics/typechecker.c
+    src/semantics/generic.c
+    src/codegen/compiler.c
+    src/runtime/vm.c
+    src/runtime/object.c
+    src/module/module.c
+    src/support/colors.c
 )
 
 # Header files (for IDE support)
 set(BLAZE_HEADERS
-    src/common.h
-    src/memory.h
-    src/value.h
-    src/types.h
-    src/chunk.h
-    src/debug.h
-    src/scanner.h
-    src/ast.h
-    src/parser.h
-    src/typechecker.h
-    src/generic.h
-    src/compiler.h
-    src/vm.h
-    src/object.h
-    src/module.h
-    src/colors.h
+    src/base/common.h
+    src/base/memory.h
+    src/base/value.h
+    src/base/chunk.h
+    src/semantics/types.h
+    src/runtime/debug.h
+    src/syntax/scanner.h
+    src/syntax/ast.h
+    src/syntax/parser.h
+    src/semantics/typechecker.h
+    src/semantics/generic.h
+    src/codegen/compiler.h
+    src/runtime/vm.h
+    src/runtime/object.h
+    src/module/module.h
+    src/support/colors.h
 )
 
 add_executable(blaze ${BLAZE_SOURCES} ${BLAZE_HEADERS})
 
-# Include directories
-target_include_directories(blaze PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# Include roots: flat #include "vm.h" etc. (no path prefix in sources)
+target_include_directories(blaze PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/base
+    ${CMAKE_SOURCE_DIR}/src/runtime
+    ${CMAKE_SOURCE_DIR}/src/syntax
+    ${CMAKE_SOURCE_DIR}/src/semantics
+    ${CMAKE_SOURCE_DIR}/src/codegen
+    ${CMAKE_SOURCE_DIR}/src/module
+    ${CMAKE_SOURCE_DIR}/src/support
+)
 
 # Find and link readline
 find_library(READLINE_LIBRARY readline PATHS /opt/homebrew/lib /usr/local/lib)

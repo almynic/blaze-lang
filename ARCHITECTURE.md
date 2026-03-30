@@ -39,7 +39,7 @@ Source Code → Scanner → Parser → AST → Type Checker → Compiler → Byt
 ## Compilation Pipeline
 
 ### 1. Scanner (Lexical Analysis)
-**File**: `src/scanner.c`, `src/scanner.h`
+**File**: `src/syntax/scanner.c`, `src/syntax/scanner.h`
 
 The scanner converts source code into a stream of tokens.
 
@@ -61,7 +61,7 @@ The scanner converts source code into a stream of tokens.
 ---
 
 ### 2. Parser (Syntax Analysis)
-**File**: `src/parser.c`, `src/parser.h`
+**File**: `src/syntax/parser.c`, `src/syntax/parser.h`
 
 The parser constructs an Abstract Syntax Tree (AST) from tokens using Pratt parsing for expressions.
 
@@ -96,7 +96,7 @@ The parser constructs an Abstract Syntax Tree (AST) from tokens using Pratt pars
 ---
 
 ### 3. AST (Abstract Syntax Tree)
-**File**: `src/ast.c`, `src/ast.h`
+**File**: `src/syntax/ast.c`, `src/syntax/ast.h`
 
 The AST represents the program structure as a tree of nodes.
 
@@ -140,7 +140,7 @@ The AST represents the program structure as a tree of nodes.
 ---
 
 ### 4. Type Checker
-**File**: `src/typechecker.c`, `src/typechecker.h`, `src/types.c`, `src/types.h`
+**File**: `src/semantics/typechecker.c`, `src/semantics/typechecker.h`, `src/semantics/types.c`, `src/semantics/types.h`
 
 The type checker performs semantic analysis and type inference.
 
@@ -170,7 +170,7 @@ The type checker performs semantic analysis and type inference.
 ---
 
 ### 5. Compiler (Bytecode Generation)
-**File**: `src/compiler.c`, `src/compiler.h`
+**File**: `src/codegen/compiler.c`, `src/codegen/compiler.h`
 
 The compiler generates bytecode for the virtual machine.
 
@@ -192,11 +192,11 @@ The compiler generates bytecode for the virtual machine.
 
 ## Virtual Machine
 
-**File**: `src/vm.c`, `src/vm.h`
+**File**: `src/runtime/vm.c`, `src/runtime/vm.h`
 
 ### Architecture
 
-The Blaze VM is a **stack-based bytecode interpreter** with **67** opcodes (see `OpCode` in `src/chunk.h`).
+The Blaze VM is a **stack-based bytecode interpreter** with **67** opcodes (see `OpCode` in `src/base/chunk.h`).
 
 **VM Components**:
 - **Value Stack**: 256 slots for operands and temporaries
@@ -383,7 +383,7 @@ Blaze uses a **mark-and-sweep garbage collector**.
 - **Active compiler chain** (`markCompilerRoots`) while a function or script is being compiled
 - Open upvalues
 
-**Compile-time boundary**: When a top-level script finishes compiling, the active compiler is torn down (`current` is cleared). The compiled `ObjFunction` is not yet reachable from globals. Before the AST is freed, the VM **must** push that function onto the value stack so a GC triggered during AST teardown cannot collect the bytecode chunk while it is still needed for execution (`interpretInternal` in `src/vm.c`).
+**Compile-time boundary**: When a top-level script finishes compiling, the active compiler is torn down (`current` is cleared). The compiled `ObjFunction` is not yet reachable from globals. Before the AST is freed, the VM **must** push that function onto the value stack so a GC triggered during AST teardown cannot collect the bytecode chunk while it is still needed for execution (`interpretInternal` in `src/runtime/vm.c`).
 
 **GC Triggers**:
 - After allocating certain number of bytes
@@ -392,7 +392,7 @@ Blaze uses a **mark-and-sweep garbage collector**.
 
 ### Value Representation
 
-**NaN boxing** — implementation in [`src/value.h`](src/value.h). `Value` is a single **`uint64_t`** (8 bytes on all supported platforms).
+**NaN boxing** — implementation in [`src/base/value.h`](src/base/value.h). `Value` is a single **`uint64_t`** (8 bytes on all supported platforms).
 
 - **IEEE doubles**: Non–quiet-NaN `double` values are stored as their raw bit patterns (the common case for float-heavy code).
 - **Tagged values**: A quiet-NaN bit pattern plus a 3-bit type tag and 48-bit payload encode nil, booleans, integers, and object pointers without a separate runtime `ValueType` discriminant.
@@ -559,22 +559,14 @@ fn example() -> int {
 blaze-lang/
 ├── main.c                  # REPL and file execution
 ├── src/
-│   ├── scanner.c/h         # Lexical analysis
-│   ├── parser.c/h          # Syntax analysis
-│   ├── ast.c/h             # AST nodes
-│   ├── typechecker.c/h     # Type checking
-│   ├── types.c/h           # Type system
-│   ├── compiler.c/h        # Bytecode generation
-│   ├── vm.c/h              # Virtual machine
-│   ├── chunk.c/h           # Bytecode chunks
-│   ├── value.c/h           # Value representation
-│   ├── object.c/h          # Heap objects
-│   ├── memory.c/h          # Memory management
-│   ├── table.c/h           # Hash tables
-│   ├── module.c/h          # Module system
-│   ├── colors.c/h          # Terminal colors
-│   ├── debug.c/h           # Debugging utilities
-│   └── common.h            # Common definitions
+│   ├── README.md           # Subfolder layout (include roots)
+│   ├── base/               # common, memory, value, chunk
+│   ├── runtime/            # object, vm, debug
+│   ├── syntax/             # scanner, parser, ast
+│   ├── semantics/          # types, typechecker, generic
+│   ├── codegen/            # compiler
+│   ├── module/             # imports / load pipeline
+│   └── support/            # colors (terminal styling)
 ├── std/
 │   ├── prelude.blaze       # Auto-loaded functions
 │   ├── math.blaze          # Math functions
@@ -604,7 +596,7 @@ blaze-lang/
 
 ### Space Complexity
 
-- **Value**: 8 bytes (NaN-boxed `uint64_t`; see [`src/value.h`](src/value.h) and CHANGELOG)
+- **Value**: 8 bytes (NaN-boxed `uint64_t`; see [`src/base/value.h`](src/base/value.h) and CHANGELOG)
 - **Call frame**: ~40 bytes
 - **Stack**: 256 values max (~4KB)
 - **Heap objects**: Varies by type
