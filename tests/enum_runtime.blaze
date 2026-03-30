@@ -1,0 +1,22 @@
+// Enum runtime: variants on class, instances with $tag / $n, match Some(x)
+
+enum Opt {
+    Some(int),
+    None
+}
+
+let o = Opt.Some(7)
+print(toString(o))
+
+match o {
+    Some(x) => { print(toString(x)) }
+    None => { print("none") }
+}
+
+let n = Opt.None
+match n {
+    Some(_) => { print("bad") }
+    None => { print("ok-none") }
+}
+
+print("enum-runtime ok")

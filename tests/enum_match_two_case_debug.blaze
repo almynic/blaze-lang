@@ -1,0 +1,12 @@
+enum Opt {
+    Some(int),
+    None
+}
+
+let n = Opt.None
+print("before match")
+match n {
+    Some(_) => { print("arm some") }
+    None => { print("arm none") }
+}
+print("after match")

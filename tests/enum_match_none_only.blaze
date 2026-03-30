@@ -1,0 +1,10 @@
+enum Opt {
+    Some(int),
+    None
+}
+
+let n = Opt.None
+match n {
+    Some(_) => { print("bad") }
+    None => { print("ok-none") }
+}

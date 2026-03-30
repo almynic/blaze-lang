@@ -1,0 +1,10 @@
+enum Opt {
+    Some(int),
+    None
+}
+
+let o = Opt.Some(7)
+match o {
+    Some(x) => { print(toString(x)) }
+    None => { print("none") }
+}
