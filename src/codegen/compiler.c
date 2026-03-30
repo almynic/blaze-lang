@@ -332,12 +332,19 @@ static void compileBinary(Expr* expr) {
         bool canFold = true;
 
         switch (binary->op.type) {
-            // Arithmetic on integers
+            // Arithmetic (ints, floats, mixed) + string concatenation
             case TOKEN_PLUS:
-                // Keep constant folding only for string concatenation.
-                if (IS_OBJ(left) && IS_OBJ(right) &&
-                    AS_OBJ(left)->type == OBJ_STRING &&
-                    AS_OBJ(right)->type == OBJ_STRING) {
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = INT_VAL(AS_INT(left) + AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) + AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) + AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) + (double)AS_INT(right));
+                } else if (IS_OBJ(left) && IS_OBJ(right) &&
+                           AS_OBJ(left)->type == OBJ_STRING &&
+                           AS_OBJ(right)->type == OBJ_STRING) {
                     ObjString* a = AS_STRING(left);
                     ObjString* b = AS_STRING(right);
                     int length = a->length + b->length;
@@ -352,21 +359,61 @@ static void compileBinary(Expr* expr) {
                 break;
 
             case TOKEN_MINUS:
-                // Avoid constant-folding arithmetic: prevents shift+literal nesting
-                // from triggering VM opcode misreads (see bitwise/shift test failures).
-                canFold = false;
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = INT_VAL(AS_INT(left) - AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) - AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) - AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) - (double)AS_INT(right));
+                } else {
+                    canFold = false;
+                }
                 break;
 
             case TOKEN_STAR:
-                canFold = false;
+                if (IS_INT(left) && IS_INT(right)) {
+                    result = INT_VAL(AS_INT(left) * AS_INT(right));
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) * AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) * AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) * (double)AS_INT(right));
+                } else {
+                    canFold = false;
+                }
                 break;
 
             case TOKEN_SLASH:
-                canFold = false;
+                if (IS_INT(left) && IS_INT(right)) {
+                    if (AS_INT(right) == 0) {
+                        canFold = false;  // Leave division-by-zero to runtime path.
+                    } else {
+                        result = INT_VAL(AS_INT(left) / AS_INT(right));
+                    }
+                } else if (IS_FLOAT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) / AS_FLOAT(right));
+                } else if (IS_INT(left) && IS_FLOAT(right)) {
+                    result = FLOAT_VAL((double)AS_INT(left) / AS_FLOAT(right));
+                } else if (IS_FLOAT(left) && IS_INT(right)) {
+                    result = FLOAT_VAL(AS_FLOAT(left) / (double)AS_INT(right));
+                } else {
+                    canFold = false;
+                }
                 break;
 
             case TOKEN_PERCENT:
-                canFold = false;
+                if (IS_INT(left) && IS_INT(right)) {
+                    if (AS_INT(right) == 0) {
+                        canFold = false;  // Leave modulo-by-zero to runtime path.
+                    } else {
+                        result = INT_VAL(AS_INT(left) % AS_INT(right));
+                    }
+                } else {
+                    canFold = false;
+                }
                 break;
 
             // Bitwise operators on integers
