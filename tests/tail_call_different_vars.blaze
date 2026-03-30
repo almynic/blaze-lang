@@ -1,0 +1,26 @@
+// Test with different variable names
+print("Tail call with different variable names")
+
+fn factorial(n: int, acc: int) -> int {
+    if n <= 1 {
+        return acc
+    }
+    // Use different local variable names
+    let next_n = n - 1
+    let next_acc = n * acc
+    return factorial(next_n, next_acc)
+}
+
+print(factorial(5, 1))
+print(factorial(10, 1))
+
+// Also test with SAME variables (parameters)
+fn sumSame(n: int, acc: int) -> int {
+    if n <= 0 {
+        return acc
+    }
+    // Try to call with one of the original parameters
+    return sumSame(n, acc)
+}
+
+print(sumSame(0, 100))

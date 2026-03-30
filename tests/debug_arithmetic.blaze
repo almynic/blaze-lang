@@ -1,0 +1,17 @@
+print("Test 1:")
+let a = 10
+let b = 20
+print(a)
+print(b)
+print(a + b)
+
+print("\nTest 2:")
+let c = 100
+let d = 200
+print(c)
+print(d)
+print(c + d)
+
+print("\nTest 3:")
+print(10 + 20)
+print(100 + 200)

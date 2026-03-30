@@ -1,0 +1,41 @@
+// Comprehensive destructuring test
+
+print("=== Test 1: Basic Destructuring ===")
+let [a, b, c] = [1, 2, 3]
+print("${a}, ${b}, ${c}")  // 1, 2, 3
+
+print("\n=== Test 2: Rest Parameters ===")
+let [first, ...rest] = [10, 20, 30, 40]
+print("first: ${first}")
+print("rest has ${rest[0]}, ${rest[1]}, ${rest[2]}")
+
+print("\n=== Test 3: Empty Rest ===")
+let [x, y, ...empty] = [5, 6]
+print("x: ${x}, y: ${y}")
+print("empty is empty array:")
+print(empty)
+
+print("\n=== Test 4: Nested Arrays ===")
+let [arr1, arr2] = [[1, 2], [3, 4]]
+print("arr1[0]: ${arr1[0]}, arr2[1]: ${arr2[1]}")
+
+print("\n=== Test 5: With Expressions ===")
+let [sum, product] = [5 + 3, 4 * 2]
+print("sum: ${sum}, product: ${product}")
+
+print("\n=== Test 6: Const Destructuring ===")
+const [PI, E] = [3, 2]
+print("PI: ${PI}, E: ${E}")
+
+print("\n=== Test 7: Multiple Rest Elements ===")
+let [h, ...tail] = [100, 200, 300, 400, 500]
+print("head: ${h}")
+print("tail[0]: ${tail[0]}, tail[3]: ${tail[3]}")
+
+print("\n=== Test 8: Single Element with Rest ===")
+let [only, ...nothing] = [42]
+print("only: ${only}")
+print("nothing:")
+print(nothing)
+
+print("\n✅ All comprehensive tests passed!")

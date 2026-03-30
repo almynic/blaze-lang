@@ -1,0 +1,14 @@
+// Exact copy of working function
+print("Exact copy test")
+
+fn factorialHelper(n: int, acc: int) -> int {
+    if n <= 1 {
+        return acc
+    }
+    let newN = n - 1
+    let newAcc = n * acc
+    return factorialHelper(newN, newAcc)
+}
+
+print(factorialHelper(5, 1))
+print(factorialHelper(10, 1))

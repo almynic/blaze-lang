@@ -1,0 +1,132 @@
+// Comprehensive NaN Boxing Test Suite
+// Tests that all value types work correctly with 64-bit NaN boxing
+
+print("=== NaN Boxing Test Suite ===\n")
+
+// Test 1: Basic type literals
+print("Test 1: Basic type literals")
+print(nil)         // NIL_VAL (0x7FF8000000000000)
+print(false)       // FALSE_VAL (0x7FFA000000000000)
+print(true)        // TRUE_VAL (0x7FFB000000000000)
+print(42)          // INT_VAL (0x7FF900000000002A)
+print(-42)         // Negative int
+print(0)           // Zero
+print(3.14)        // FLOAT_VAL (real IEEE 754 double)
+print(-3.14)       // Negative float
+print("hello")     // OBJ_VAL (string pointer)
+
+// Test 2: Integer range (48-bit signed)
+print("\nTest 2: Integer range (48-bit)")
+let maxInt = 140737488355327    // 2^47 - 1
+let minInt = -140737488355328   // -2^47
+print(maxInt)
+print(minInt)
+print(maxInt + 0)  // Test extraction and re-encoding
+print(minInt + 0)
+
+// Test 3: Arithmetic operations
+print("\nTest 3: Arithmetic operations")
+let a = 10
+let b = 20
+print(a + b)       // 30
+print(a - b)       // -10
+print(a * b)       // 200
+print(b / a)       // 2
+print(b % a)       // 0
+
+// Test 4: Mixed int/float arithmetic
+print("\nTest 4: Mixed int/float arithmetic")
+let x = 10
+let y = 3.5
+print(x + y)       // 13.5 (should be float)
+print(x * y)       // 35.0 (should be float)
+print(y - x)       // -6.5
+
+// Test 5: Comparison operations
+print("\nTest 5: Comparison operations")
+print(10 < 20)     // true
+print(20 < 10)     // false
+print(10 == 10)    // true
+print(10 != 20)    // true
+print(nil == nil)  // true
+print(true == true)  // true
+print(false == false)  // true
+
+// Test 6: Boolean operations
+print("\nTest 6: Boolean operations")
+let t = true
+let f = false
+print(t && t)      // true
+print(t && f)      // false
+print(t || f)      // true
+print(f || f)      // false
+print(!t)          // false
+print(!f)          // true
+
+// Test 7: Arrays
+print("\nTest 7: Arrays")
+let intArr = [10, 20, 30, 40, 50]
+print(intArr[0])   // 10
+print(intArr[2])   // 30
+print(intArr[4])   // 50
+let strArr = ["a", "b", "c"]
+print(strArr[0])   // a
+print(strArr[2])   // c
+
+// Test 8: Function calls with different types
+print("\nTest 8: Function calls")
+fn identity(val: int) -> int {
+    return val
+}
+print(identity(100))  // 100
+
+fn addNums(a: int, b: int) -> int {
+    return a + b
+}
+print(addNums(15, 25))  // 40
+
+// Test 9: Nested data structures
+print("\nTest 9: Nested data structures")
+let nested = [[1, 2], [3, 4]]
+print(nested[0][0])  // 1
+print(nested[1][1])  // 4
+
+// Test 10: Variable assignment and reassignment
+print("\nTest 10: Variable reassignment")
+let counter = 0
+let counter2 = counter + 1
+print(counter2)  // 1
+let counter3 = counter2 + 1
+print(counter3)  // 2
+
+// Test 11: Control flow with different types
+print("\nTest 11: Control flow")
+if true {
+    print("if works")
+}
+
+if 10 < 20 {
+    print("comparison works")
+}
+
+let i = 0
+while i < 3 {
+    print(i)
+    i = i + 1
+}
+
+// Test 12: Optional types
+print("\nTest 12: Optional types")
+let opt: int? = 42
+print(opt)  // 42
+let nullOpt: int? = nil
+print(nullOpt)  // nil
+
+// Test 13: Type equality edge cases
+print("\nTest 13: Type equality")
+print(0 == 0)       // true
+print(0.0 == 0.0)   // true
+print(0 == 0.0)     // true (mixed comparison)
+print("" == "")     // true
+
+print("\n=== All NaN Boxing Tests Complete ===")

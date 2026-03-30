@@ -1,0 +1,9 @@
+fn identity<T>(x: T) -> T {
+    return x
+}
+
+let a: int = identity<int>(42)
+let b: string = identity("ok")
+
+print(a)
+print(b)

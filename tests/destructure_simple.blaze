@@ -1,0 +1,12 @@
+// Simplest possible test
+print("Starting test...")
+
+let arr = [1, 2, 3]
+print("Created array")
+print(arr)
+
+print("Now trying destructuring...")
+let [a, b] = [10, 20]
+print("Destructuring complete")
+print(a)
+print(b)

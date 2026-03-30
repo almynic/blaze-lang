@@ -1,0 +1,7 @@
+class A {
+    fn f() -> int { return 1 }
+}
+class B extends A {
+    fn g() -> int { return 2 }
+}
+print(0)

@@ -1,0 +1,11 @@
+// Test with direct variable arguments
+print("Tail call with variable arguments")
+
+fn sum(n: int, acc: int) -> int {
+    if n <= 0 {
+        return acc
+    }
+    return sum(n, acc)  // Direct variables, no expressions
+}
+
+print(sum(0, 42))

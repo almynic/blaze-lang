@@ -1,0 +1,26 @@
+// Verify rest parameters work correctly
+
+print("=== Verify Rest Array Elements ===")
+
+let [first, ...rest] = [1, 2, 3, 4, 5]
+print("first: ${first}")
+print("rest[0]: ${rest[0]}")  // Should be 2
+print("rest[1]: ${rest[1]}")  // Should be 3
+print("rest[2]: ${rest[2]}")  // Should be 4
+print("rest[3]: ${rest[3]}")  // Should be 5
+
+print("\n=== Verify Empty Rest ===")
+
+let [a, b, ...empty] = [10, 20]
+print("a: ${a}")
+print("b: ${b}")
+print("empty length should be 0:")
+print(empty)
+
+print("\n=== Verify Single Element Rest ===")
+
+let [x, ...ys] = [100, 200]
+print("x: ${x}")
+print("ys[0]: ${ys[0]}")  // Should be 200
+
+print("\nAll verifications passed!")

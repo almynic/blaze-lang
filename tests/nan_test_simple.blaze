@@ -1,0 +1,12 @@
+print("Test 1: Basic literals")
+print(nil)
+print(true)
+print(false)
+print(42)
+print(3.14)
+print("hello")
+
+print("Test 2: Arithmetic")
+let x = 10
+let y = 20
+print(x + y)

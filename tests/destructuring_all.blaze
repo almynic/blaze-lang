@@ -1,0 +1,43 @@
+// Comprehensive test of all destructuring features
+
+print("=== Array Destructuring ===")
+let [a, b, c] = [1, 2, 3]
+print("${a}, ${b}, ${c}")
+
+print("\n=== Array with Rest ===")
+let [first, ...rest] = [10, 20, 30, 40]
+print("first: ${first}, rest[0]: ${rest[0]}, rest[2]: ${rest[2]}")
+
+print("\n=== Object Destructuring ===")
+class Point {
+    fn set(x: int, y: int) {
+        this.x = x
+        this.y = y
+    }
+}
+
+let p = Point()
+p.set(100, 200)
+let {x, y} = p
+print("x: ${x}, y: ${y}")
+
+print("\n=== Nested Usage ===")
+class Data {
+    fn init() {
+        this.count = 42
+        this.label = "test"
+    }
+}
+
+let d = Data()
+d.init()
+
+// Destructure object
+let {count, label} = d
+print("count: ${count}, label: ${label}")
+
+// Destructure a separate array
+let [v1, v2, v3] = [5, 10, 15]
+print("v1: ${v1}, v2: ${v2}, v3: ${v3}")
+
+print("\n✅ All destructuring features working!")

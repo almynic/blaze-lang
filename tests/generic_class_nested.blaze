@@ -1,0 +1,8 @@
+class Box<T> {
+    fn tag() -> int {
+        return 1
+    }
+}
+
+let outer: Box<Box<int>> = Box<Box<int>>()
+print(outer.tag())

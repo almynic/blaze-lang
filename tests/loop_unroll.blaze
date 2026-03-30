@@ -1,0 +1,52 @@
+// Test: Loop Unrolling
+// Verifies that unrolled loops (small ranges/arrays) still work correctly
+
+print("=== Loop Unrolling Tests ===")
+
+// Test 1: Small increasing range (unrolled)
+let sum1 = 0
+for i in 1..5 {
+    sum1 = sum1 + i
+}
+print("Sum 1..5: " + toString(sum1))  // Expected: 10 (1+2+3+4)
+
+// Test 2: Small decreasing range (unrolled)
+let sum2 = 0
+for i in 5..1 {
+    sum2 = sum2 + i
+}
+print("Sum 5..1: " + toString(sum2))  // Expected: 14 (5+4+3+2)
+
+// Test 3: Small array literal (unrolled)
+let sum3 = 0
+for i in [10, 20, 30] {
+    sum3 = sum3 + i
+}
+print("Sum [10, 20, 30]: " + toString(sum3))  // Expected: 60
+
+// Test 4: Larger range (not unrolled, > 16)
+let sum4 = 0
+for i in 1..21 {
+    sum4 = sum4 + 1
+}
+print("Count 1..21: " + toString(sum4))  // Expected: 20
+
+// Test 5: Mixed elements in array (unrolled)
+let a = 100
+let b = 200
+let sum5 = 0
+for i in [a, b, 300] {
+    sum5 = sum5 + i
+}
+print("Sum [a, b, 300]: " + toString(sum5))  // Expected: 600
+
+// Test 6: Nested unrolled loops
+let count = 0
+for i in 1..3 {
+    for j in 1..3 {
+        count = count + 1
+    }
+}
+print("Nested 2x2: " + toString(count))  // Expected: 4
+
+print("All tests passed!")

@@ -1,0 +1,53 @@
+// Test: Enum and Pattern Matching
+print("=== Enum Tests ===")
+
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Custom(int, int, int)
+}
+
+print("Color.Red:")
+print(Color.Red)
+print("Tag: " + Color.Red.$tag)
+
+let c = Color.Custom(10, 20, 30)
+print("\nColor.Custom(10, 20, 30):")
+print(c)
+print("Tag: " + c.$tag)
+print("Fields: " + toString(c.$0) + ", " + toString(c.$1) + ", " + toString(c.$2))
+
+print("\nMatch Statement:")
+fn describeColor(color: Color) {
+    match color {
+        Color.Red => print("It's red!")
+        Color.Green => print("It's green!")
+        Color.Blue => print("It's blue!")
+        Color.Custom(r, g, b) => {
+            print("It's custom!")
+            print("R: " + toString(r))
+            print("G: " + toString(g))
+            print("B: " + toString(b))
+        }
+    }
+}
+
+describeColor(Color.Red)
+describeColor(c)
+
+print("\nMatch Expression:")
+fn colorName(color: Color) -> string {
+    return match color {
+        Color.Red => "Red"
+        Color.Green => "Green"
+        Color.Blue => "Blue"
+        Color.Custom(_, _, _) => "Custom"
+        _ => "Unknown"
+    }
+}
+
+print(colorName(Color.Green))
+print(colorName(Color.Custom(0, 0, 0)))
+
+print("\nTests complete!")

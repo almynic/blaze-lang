@@ -1,0 +1,33 @@
+// Phase 7: interfaces, implements, generic bounds (simple)
+
+interface HasArea {
+    fn area() -> float
+}
+
+class UnitSquare implements HasArea {
+    fn init() {
+    }
+    fn area() -> float {
+        return 1.0
+    }
+}
+
+let s: UnitSquare = UnitSquare()
+print(s.area())
+
+interface Comparable {
+    fn cmp(other: int) -> int
+}
+
+class IntBox implements Comparable {
+    v: int
+    fn init(x: int) {
+        this.v = x
+    }
+    fn cmp(other: int) -> int {
+        return this.v - other
+    }
+}
+
+let b: IntBox = IntBox(5)
+print(b.cmp(3))

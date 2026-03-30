@@ -1,0 +1,14 @@
+class Parent {
+    fn p() -> int {
+        return 7
+    }
+}
+
+class Child extends Parent {
+    fn c() -> int {
+        return 3
+    }
+}
+
+let o: Child = Child()
+print(o.p())

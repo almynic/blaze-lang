@@ -1,0 +1,4 @@
+class A {
+    fn f() -> int { return 1 }
+}
+print(99)

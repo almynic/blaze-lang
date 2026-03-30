@@ -1,0 +1,66 @@
+// Test file for generic types in Blaze
+
+print("=== Generic Types Test ===\n")
+
+// Test generic Array type (conceptual - actual implementation would require stdlib updates)
+print("1. Generic function identity")
+fn identity<T>(x: T) -> T {
+    return x
+}
+
+let a: int = identity<int>(42)
+let b: string = identity<string>("hello")
+let c: bool = identity<bool>(true)
+
+print("identity<int>(42) = " + toString(a))
+print("identity<string>(\"hello\") = " + b)
+print("identity<bool>(true) = " + toString(c))
+
+// Test with type inference (should work if implemented)
+print("\n2. Generic function with type inference")
+let d = identity(123) // T inferred as int
+let e = identity("world") // T inferred as string
+let f = identity(3.14) // T inferred as float
+
+print("identity(123) = " + d)
+print("identity(\"world\") = " + e)
+print("identity(3.14) = " + f)
+
+// Test generic Array-like operations
+print("\n3. Generic array operations (conceptual)")
+
+// This would work once we have proper generic Array<T> in stdlib
+// For now, we'll test the concepts with our updated std/array.blaze
+
+print("\n4. Testing updated std/array functions")
+import { map, filter, reduce } from "std/array"
+
+// Test map with different types
+let numbers: [int] = [1, 2, 3, 4, 5]
+let strings: [string] = ["one", "two", "three"]
+
+let squared = map(numbers, (x) => x * x)
+let lengths = map(strings, (s) => len(s))
+
+print("Original numbers: " + toString(numbers))
+print("Squared: " + squared)
+print("Original strings: " + toString(strings))
+print("Lengths: " + lengths)
+
+// Test filter
+let evens = filter(numbers, (x) => x % 2 == 0)
+let longStrings = filter(strings, (s) => len(s) > 3)
+
+print("Evens: " + evens)
+print("Long strings (>3 chars): " + longStrings)
+
+// Test reduce
+let sum = reduce(numbers, 0, (acc, x) => acc + x)
+let product = reduce(numbers, 1, (acc, x) => acc * x)
+let concatenated = reduce(strings, "", (acc, s) => acc + "-" + s)
+
+print("Sum: " + toString(sum))
+print("Product: " + toString(product))
+print("Concatenated strings: " + concatenated)
+
+print("\n=== Generic Types Test Completed ===")

@@ -1,0 +1,13 @@
+// Test factorial separately
+print("Factorial test")
+
+fn factorial(n: int, acc: int) -> int {
+    if n <= 1 {
+        return acc
+    }
+    let next_n = n - 1
+    let next_acc = n * acc
+    return factorial(next_n, next_acc)
+}
+
+print(factorial(5, 1))

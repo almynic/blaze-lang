@@ -1,0 +1,12 @@
+print("Direct arithmetic:")
+print(10 + 20)
+print(5 - 3)
+print(4 * 3)
+print(10 / 2)
+
+print("\nWith variables:")
+let a = 10
+let b = 20
+print(a)
+print(b)
+print(a + b)

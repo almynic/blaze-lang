@@ -1,0 +1,16 @@
+// Debug destructuring
+print("Test 1: Simple two-element array")
+let [x, y] = [100, 200]
+print("x should be 100:")
+print(x)
+print("y should be 200:")
+print(y)
+
+print("Test 2: Three elements")
+let [a, b, c] = [1, 2, 3]
+print("a should be 1:")
+print(a)
+print("b should be 2:")
+print(b)
+print("c should be 3:")
+print(c)

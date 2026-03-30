@@ -1,0 +1,186 @@
+// Tail Call Optimization Test Suite
+// Tests for tail call optimization in Blaze language
+
+print("=== Tail Call Optimization Tests ===")
+print("")
+
+// Test 1: Simple tail recursive factorial with accumulator
+print("Test 1: Tail recursive factorial")
+fn factorial(n: int, acc: int) -> int {
+    if n <= 1 {
+        return acc
+    }
+    return factorial(n - 1, n * acc)  // TAIL CALL
+}
+
+let result1 = factorial(5, 1)
+print("factorial(5, 1) = " + toString(result1))
+if result1 == 120 {
+    print("✓ Test 1 passed")
+} else {
+    print("✗ Test 1 failed: expected 120, got " + toString(result1))
+}
+print("")
+
+// Test 2: Larger factorial
+print("Test 2: Larger factorial")
+let result2 = factorial(10, 1)
+print("factorial(10, 1) = " + toString(result2))
+if result2 == 3628800 {
+    print("✓ Test 2 passed")
+} else {
+    print("✗ Test 2 failed: expected 3628800, got " + toString(result2))
+}
+print("")
+
+// Test 3: Deep recursion (would overflow without TCO)
+print("Test 3: Deep recursion countdown (>64 frames)")
+fn countdown(n: int) -> int {
+    if n <= 0 {
+        return 0
+    }
+    return countdown(n - 1)  // TAIL CALL
+}
+
+let result3 = countdown(1000)
+print("countdown(1000) = " + toString(result3))
+if result3 == 0 {
+    print("✓ Test 3 passed (no stack overflow!)")
+} else {
+    print("✗ Test 3 failed: expected 0, got " + toString(result3))
+}
+print("")
+
+// Test 4: Non-tail recursive fibonacci (should still work)
+print("Test 4: Non-tail recursive fibonacci")
+fn fibonacci(n: int) -> int {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)  // NOT tail call
+}
+
+let result4 = fibonacci(10)
+print("fibonacci(10) = " + toString(result4))
+if result4 == 55 {
+    print("✓ Test 4 passed")
+} else {
+    print("✗ Test 4 failed: expected 55, got " + toString(result4))
+}
+print("")
+
+// Test 5: Tail recursive sum
+print("Test 5: Tail recursive sum")
+fn sumTo(n: int, acc: int) -> int {
+    if n <= 0 {
+        return acc
+    }
+    return sumTo(n - 1, acc + n)  // TAIL CALL
+}
+
+let result5 = sumTo(100, 0)
+print("sumTo(100, 0) = " + toString(result5))
+if result5 == 5050 {
+    print("✓ Test 5 passed")
+} else {
+    print("✗ Test 5 failed: expected 5050, got " + toString(result5))
+}
+print("")
+
+// Test 6: Tail recursive power
+print("Test 6: Tail recursive power")
+fn power(base: int, exp: int, acc: int) -> int {
+    if exp == 0 {
+        return acc
+    }
+    return power(base, exp - 1, acc * base)  // TAIL CALL
+}
+
+let result6 = power(2, 10, 1)
+print("power(2, 10, 1) = " + toString(result6))
+if result6 == 1024 {
+    print("✓ Test 6 passed")
+} else {
+    print("✗ Test 6 failed: expected 1024, got " + toString(result6))
+}
+print("")
+
+// Test 7: Tail call with conditional return
+print("Test 7: Tail call with conditional")
+fn collatz(n: int, steps: int) -> int {
+    if n == 1 {
+        return steps
+    }
+    if n % 2 == 0 {
+        return collatz(n / 2, steps + 1)  // TAIL CALL
+    }
+    return collatz(n * 3 + 1, steps + 1)  // TAIL CALL
+}
+
+let result7 = collatz(27, 0)
+print("collatz(27, 0) = " + toString(result7))
+if result7 == 111 {
+    print("✓ Test 7 passed")
+} else {
+    print("✗ Test 7 failed: expected 111, got " + toString(result7))
+}
+print("")
+
+// Test 8: Very deep recursion
+print("Test 8: Very deep recursion (2000 frames)")
+fn deepRecursion(n: int) -> int {
+    if n <= 0 {
+        return 42
+    }
+    return deepRecursion(n - 1)  // TAIL CALL
+}
+
+let result8 = deepRecursion(2000)
+print("deepRecursion(2000) = " + toString(result8))
+if result8 == 42 {
+    print("✓ Test 8 passed (no stack overflow!)")
+} else {
+    print("✗ Test 8 failed: expected 42, got " + toString(result8))
+}
+print("")
+
+// Test 9: Return value correctness with multiple branches
+print("Test 9: Multiple tail call branches")
+fn ackermann(m: int, n: int) -> int {
+    if m == 0 {
+        return n + 1
+    }
+    if n == 0 {
+        return ackermann(m - 1, 1)  // TAIL CALL
+    }
+    return ackermann(m - 1, ackermann(m, n - 1))  // NOT tail call (inner call)
+}
+
+let result9 = ackermann(2, 2)
+print("ackermann(2, 2) = " + toString(result9))
+if result9 == 7 {
+    print("✓ Test 9 passed")
+} else {
+    print("✗ Test 9 failed: expected 7, got " + toString(result9))
+}
+print("")
+
+// Test 10: Tail recursive GCD
+print("Test 10: Tail recursive GCD")
+fn gcdHelper(a: int, b: int) -> int {
+    if b == 0 {
+        return a
+    }
+    return gcdHelper(b, a % b)  // TAIL CALL
+}
+
+let result10 = gcdHelper(48, 18)
+print("gcdHelper(48, 18) = " + toString(result10))
+if result10 == 6 {
+    print("✓ Test 10 passed")
+} else {
+    print("✗ Test 10 failed: expected 6, got " + toString(result10))
+}
+print("")
+
+print("=== All Tail Call Tests Complete ===")

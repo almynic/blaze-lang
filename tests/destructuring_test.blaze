@@ -1,0 +1,39 @@
+// Test array destructuring
+
+print("=== Basic Array Destructuring ===")
+
+// Simple destructuring
+let [a, b, c] = [1, 2, 3]
+print("a = ${a}")  // 1
+print("b = ${b}")  // 2
+print("c = ${c}")  // 3
+
+// With different values
+let [x, y] = [10, 20]
+print("x = ${x}")  // 10
+print("y = ${y}")  // 20
+
+// Destructuring array from expression
+let [first, second] = [1 + 1, 2 * 2]
+print("first = ${first}")   // 2
+print("second = ${second}") // 4
+
+print("=== Destructuring with Type Annotation ===")
+
+let [d, e]: [int] = [100, 200]
+print("d = ${d}")  // 100
+print("e = ${e}")  // 200
+
+print("=== Nested Arrays ===")
+
+let [m, n] = [[1, 2], [3, 4]]
+print("m = ${m}")  // [1, 2]
+print("n = ${n}")  // [3, 4]
+
+print("=== Destructuring in const ===")
+
+const [p, q] = [42, 84]
+print("p = ${p}")  // 42
+print("q = ${q}")  // 84
+
+print("All basic destructuring tests passed!")

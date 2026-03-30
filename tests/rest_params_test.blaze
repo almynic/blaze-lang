@@ -1,0 +1,33 @@
+// Test rest parameters in array destructuring
+
+print("=== Basic Rest Parameters ===")
+
+// Rest at the end
+let [first, ...rest] = [1, 2, 3, 4, 5]
+print("first = ${first}")     // 1
+print("rest = ${rest}")        // [2, 3, 4, 5]
+
+// Rest with two elements before
+let [a, b, ...others] = [10, 20, 30, 40]
+print("a = ${a}")              // 10
+print("b = ${b}")              // 20
+print("others = ${others}")    // [30, 40]
+
+// Rest with only one element
+let [x, ...ys] = [100, 200]
+print("x = ${x}")              // 100
+print("ys = ${ys}")            // [200]
+
+// Rest with no remaining elements
+let [p, q, ...empty] = [1, 2]
+print("p = ${p}")              // 1
+print("q = ${q}")              // 2
+print("empty = ${empty}")      // []
+
+print("\n=== Rest with const ===")
+
+const [head, ...tail] = [5, 10, 15, 20, 25]
+print("head = ${head}")        // 5
+print("tail = ${tail}")        // [10, 15, 20, 25]
+
+print("\nAll rest parameter tests passed!")

@@ -1,0 +1,15 @@
+fn apply(f: fn(int) -> int, x: int) -> int {
+    return f(x)
+}
+
+let a = apply((n: int) => n + 1, 41)
+let b = apply((n: int) -> int => n * 2, 21)
+let c = apply((n) => n - 1, 10)
+let d = apply((n: int) => { return n + 10 }, 5)
+let e = apply((n: int) -> int => { return n * 3 }, 7)
+
+print(a)
+print(b)
+print(c)
+print(d)
+print(e)

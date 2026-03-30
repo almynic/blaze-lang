@@ -1,0 +1,10 @@
+// Test multi-argument functions without tail calls
+print("Testing multi-argument functions")
+
+fn add(a: int, b: int) -> int {
+    let result = a + b
+    return result
+}
+
+print(add(5, 3))
+print(add(10, 20))

@@ -1,0 +1,66 @@
+// Test object/class destructuring
+
+print("=== Test 1: Basic Class Destructuring ===")
+
+class Point {
+    fn setValues(x: int, y: int) {
+        this.x = x
+        this.y = y
+    }
+}
+
+let p = Point()
+p.setValues(10, 20)
+let {x, y} = p
+print("x = ${x}")  // 10
+print("y = ${y}")  // 20
+
+print("\n=== Test 2: Three Properties ===")
+
+class Person {
+    fn setValues(name: string, age: int, city: string) {
+        this.name = name
+        this.age = age
+        this.city = city
+    }
+}
+
+let person = Person()
+person.setValues("Alice", 30, "NYC")
+let {name, age, city} = person
+print("name = ${name}")  // Alice
+print("age = ${age}")    // 30
+print("city = ${city}")  // NYC
+
+print("\n=== Test 3: Partial Destructuring ===")
+
+class Rectangle {
+    fn setValues(width: int, height: int, color: string) {
+        this.width = width
+        this.height = height
+        this.color = color
+    }
+}
+
+let rect = Rectangle()
+rect.setValues(100, 50, "blue")
+let {width, height} = rect  // Only destructure width and height
+print("width = ${width}")    // 100
+print("height = ${height}")  // 50
+
+print("\n=== Test 4: Const Destructuring ===")
+
+class Config {
+    fn setValues(apiKey: string, timeout: int) {
+        this.apiKey = apiKey
+        this.timeout = timeout
+    }
+}
+
+let cfg = Config()
+cfg.setValues("secret123", 5000)
+const {apiKey, timeout} = cfg
+print("apiKey = ${apiKey}")      // secret123
+print("timeout = ${timeout}")    // 5000
+
+print("\n✅ All object destructuring tests passed!")

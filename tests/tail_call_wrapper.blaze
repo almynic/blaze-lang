@@ -1,0 +1,18 @@
+// Test with wrapper function
+print("Tail call with wrapper")
+
+fn factorialHelper(n: int, acc: int) -> int {
+    if n <= 1 {
+        return acc
+    }
+    let newN = n - 1
+    let newAcc = n * acc
+    return factorialHelper(newN, newAcc)
+}
+
+fn factorial(n: int) -> int {
+    return factorialHelper(n, 1)
+}
+
+print(factorial(5))
+print(factorial(10))
