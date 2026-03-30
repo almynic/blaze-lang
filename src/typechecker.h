@@ -22,12 +22,20 @@ typedef struct {
     int scopeDepth;
 } SymbolTable;
 
+typedef struct {
+    Type* instType;
+    Stmt* templateStmt;
+} GenericInstToCheck;
+
 // Type checker state
 typedef struct {
     SymbolTable symbols;
     Type* currentFunctionReturn;    // Expected return type of current function
     Type* currentClass;             // Current class being checked (for 'this')
     bool hadError;
+    GenericInstToCheck* genericInsts;
+    int genericInstCount;
+    int genericInstCapacity;
 } TypeChecker;
 
 // Initialize the type checker

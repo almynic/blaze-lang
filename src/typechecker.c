@@ -137,6 +137,24 @@ static TypeGuard noTypeGuard() {
 
 // Forward declaration
 static Type* checkExpr(TypeChecker* checker, Expr* expr);
+static void checkStmt(TypeChecker* checker, Stmt* stmt);
+
+static void pushGenericInst(TypeChecker* checker, Type* instType, Stmt* templateStmt) {
+    for (int i = 0; i < checker->genericInstCount; i++) {
+        if (typesEqual(checker->genericInsts[i].instType, instType)) {
+            return;
+        }
+    }
+    if (checker->genericInstCount >= checker->genericInstCapacity) {
+        int old = checker->genericInstCapacity;
+        checker->genericInstCapacity = GROW_CAPACITY(old);
+        checker->genericInsts = GROW_ARRAY(GenericInstToCheck, checker->genericInsts,
+                                           old, checker->genericInstCapacity);
+    }
+    checker->genericInsts[checker->genericInstCount].instType = instType;
+    checker->genericInsts[checker->genericInstCount].templateStmt = templateStmt;
+    checker->genericInstCount++;
+}
 
 // Detect type guards of the form: type(x) == "int" or x == nil
 static TypeGuard analyzeTypeGuard(Expr* condition) {
@@ -328,10 +346,19 @@ Type* resolveTypeNode(TypeChecker* checker, TypeNode* node) {
                 return createNilType();
             }
 
-            // Could be a class name - look it up
+            // Could be a user-defined type (class, alias, generic inst, or type parameter)
             Symbol* sym = lookupSymbol(checker, name.start, name.length);
-            if (sym != NULL && sym->type->kind == TYPE_CLASS) {
-                return sym->type;
+            if (sym != NULL) {
+                if (sym->type->kind == TYPE_GENERIC_CLASS_TEMPLATE) {
+                    typeErrorFormat(checker, name.line,
+                                   "Generic class '%.*s' requires type arguments (e.g. %.*s<int>).",
+                                   name.length, name.start, name.length, name.start);
+                    return createErrorType();
+                }
+                if (sym->type->kind == TYPE_CLASS || sym->type->kind == TYPE_TYPE_PARAM ||
+                    sym->type->kind == TYPE_GENERIC_INST || sym->type->kind == TYPE_INTERFACE) {
+                    return sym->type;
+                }
             }
 
             typeErrorFormat(checker, name.line, "Unknown type '%.*s'",
@@ -374,6 +401,68 @@ Type* resolveTypeNode(TypeChecker* checker, TypeNode* node) {
 
             return createUnionType(types, typeCount);
         }
+        case TYPE_NODE_GENERIC: {
+            Token name = node->as.generic.name;
+            Symbol* sym = lookupSymbol(checker, name.start, name.length);
+            if (sym == NULL || sym->type->kind != TYPE_GENERIC_CLASS_TEMPLATE) {
+                typeErrorFormat(checker, name.line, "Unknown generic type '%.*s'.",
+                               name.length, name.start);
+                return createErrorType();
+            }
+            Stmt* stmt = (Stmt*)sym->type->as.genericClassTemplate->classStmt;
+            ClassStmt* cs = &stmt->as.class_;
+            if (node->as.generic.typeArgCount != cs->typeParamCount) {
+                typeErrorFormat(checker, name.line, "Wrong number of type arguments for '%.*s'.",
+                               name.length, name.start);
+                return createErrorType();
+            }
+            Type** args = ALLOCATE(Type*, node->as.generic.typeArgCount);
+            for (int i = 0; i < node->as.generic.typeArgCount; i++) {
+                args[i] = resolveTypeNode(checker, node->as.generic.typeArgs[i]);
+            }
+            if (cs->typeParamBounds != NULL) {
+                for (int bi = 0; bi < cs->typeParamCount; bi++) {
+                    if (cs->typeParamBounds[bi].length == 0) continue;
+                    Symbol* bsym = lookupSymbol(checker, cs->typeParamBounds[bi].start,
+                                                cs->typeParamBounds[bi].length);
+                    if (bsym == NULL || bsym->type->kind != TYPE_INTERFACE) {
+                        typeErrorFormat(checker, name.line, "Unknown interface bound '%.*s'.",
+                                        cs->typeParamBounds[bi].length, cs->typeParamBounds[bi].start);
+                        continue;
+                    }
+                    Type* arg = args[bi];
+                    if (arg->kind == TYPE_INT || arg->kind == TYPE_FLOAT || arg->kind == TYPE_BOOL ||
+                        arg->kind == TYPE_STRING || arg->kind == TYPE_NIL) {
+                        typeErrorFormat(checker, name.line,
+                                        "Type argument does not satisfy interface bound.");
+                        continue;
+                    }
+                    if (arg->kind == TYPE_CLASS || arg->kind == TYPE_INSTANCE) {
+                        ClassType* ct = arg->as.classType;
+                        bool ok = false;
+                        if (ct != NULL && ct->implementedInterfaces != NULL) {
+                            for (int k = 0; k < ct->implementedInterfaceCount; k++) {
+                                if (typesEqual(ct->implementedInterfaces[k], bsym->type)) {
+                                    ok = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!ok) {
+                            typeErrorFormat(checker, name.line,
+                                            "Type argument does not satisfy interface bound.");
+                        }
+                    } else {
+                        typeErrorFormat(checker, name.line,
+                                        "Type argument does not satisfy interface bound.");
+                    }
+                }
+            }
+            Type* inst = createGenericInstType(sym->type, args, node->as.generic.typeArgCount);
+            FREE_ARRAY(Type*, args, node->as.generic.typeArgCount);
+            pushGenericInst(checker, inst, stmt);
+            return inst;
+        }
     }
 
     return createErrorType();
@@ -384,6 +473,9 @@ Type* resolveTypeNode(TypeChecker* checker, TypeNode* node) {
 // ============================================================================
 
 static Type* checkExpr(TypeChecker* checker, Expr* expr);
+static Type* checkMatchPatternExpr(TypeChecker* checker, Expr* expr, Type* valueType, int line);
+static Type* checkMatchPatternCase(TypeChecker* checker, Expr* pattern, Token* destructureParams,
+                                   int destructureCount, Type* valueType, int line);
 static Type* checkMatch(TypeChecker* checker, Expr* expr);
 
 static Type* checkLiteral(TypeChecker* checker, Expr* expr) {
@@ -444,8 +536,14 @@ static Type* checkBinary(TypeChecker* checker, Expr* expr) {
         return createErrorType();
     }
 
-    // If either operand is UNKNOWN (e.g., from property access), be lenient
-    if (leftType->kind == TYPE_UNKNOWN || rightType->kind == TYPE_UNKNOWN) {
+    // If either operand is UNKNOWN/type-param (generic placeholder), be lenient.
+    if (leftType->kind == TYPE_UNKNOWN || rightType->kind == TYPE_UNKNOWN ||
+        leftType->kind == TYPE_TYPE_PARAM || rightType->kind == TYPE_TYPE_PARAM) {
+        if (binary->op.type == TOKEN_EQUAL_EQUAL || binary->op.type == TOKEN_BANG_EQUAL ||
+            binary->op.type == TOKEN_LESS || binary->op.type == TOKEN_LESS_EQUAL ||
+            binary->op.type == TOKEN_GREATER || binary->op.type == TOKEN_GREATER_EQUAL) {
+            return createBoolType();
+        }
         return createUnknownType();
     }
 
@@ -627,9 +725,42 @@ static Type* checkAssign(TypeChecker* checker, Expr* expr) {
 
 static Type* checkCall(TypeChecker* checker, Expr* expr) {
     CallExpr* call = &expr->as.call;
+
+    if (call->explicitTypeArgCount > 0 && call->callee->kind == EXPR_VARIABLE) {
+        VariableExpr* calleeVar = &call->callee->as.variable;
+        Symbol* sym = lookupSymbol(checker, calleeVar->name.start, calleeVar->name.length);
+        if (sym != NULL && sym->type->kind == TYPE_GENERIC_CLASS_TEMPLATE) {
+            Stmt* stmt = (Stmt*)sym->type->as.genericClassTemplate->classStmt;
+            ClassStmt* cs = &stmt->as.class_;
+            if (call->explicitTypeArgCount != cs->typeParamCount) {
+                typeErrorFormat(checker, expr->line,
+                               "Wrong number of type arguments for '%.*s'.",
+                               calleeVar->name.length, calleeVar->name.start);
+                return createErrorType();
+            }
+            Type** args = ALLOCATE(Type*, call->explicitTypeArgCount);
+            for (int i = 0; i < call->explicitTypeArgCount; i++) {
+                args[i] = resolveTypeNode(checker, call->explicitTypeArgs[i]);
+            }
+            Type* inst = createGenericInstType(sym->type, args, call->explicitTypeArgCount);
+            FREE_ARRAY(Type*, args, call->explicitTypeArgCount);
+            pushGenericInst(checker, inst, stmt);
+            for (int i = 0; i < call->argCount; i++) {
+                checkExpr(checker, call->arguments[i]);
+            }
+            return inst;
+        }
+    }
+
     Type* calleeType = checkExpr(checker, call->callee);
 
     if (calleeType->kind == TYPE_ERROR) {
+        return createErrorType();
+    }
+
+    if (calleeType->kind == TYPE_GENERIC_CLASS_TEMPLATE) {
+        typeError(checker, expr->line,
+                  "Generic class constructor requires explicit type arguments (e.g. Box<int>(...)).");
         return createErrorType();
     }
 
@@ -641,6 +772,13 @@ static Type* checkCall(TypeChecker* checker, Expr* expr) {
             checkExpr(checker, call->arguments[i]);
         }
         return calleeType;  // Class type is also the instance type
+    }
+
+    if (calleeType->kind == TYPE_GENERIC_INST) {
+        for (int i = 0; i < call->argCount; i++) {
+            checkExpr(checker, call->arguments[i]);
+        }
+        return calleeType;
     }
 
     // Allow calling UNKNOWN types (e.g., method calls where we don't track method types)
@@ -784,6 +922,7 @@ static Type* checkGet(TypeChecker* checker, Expr* expr) {
 
     // Allow property access on class types (instances) and unknown types
     if (objectType->kind != TYPE_INSTANCE && objectType->kind != TYPE_CLASS &&
+        objectType->kind != TYPE_GENERIC_INST &&
         objectType->kind != TYPE_UNKNOWN) {
         typeError(checker, expr->line, "Only instances have properties.");
         return createErrorType();
@@ -831,24 +970,145 @@ static Type* checkLambda(TypeChecker* checker, Expr* expr) {
                      paramTypes[i], false);
     }
 
-    // Determine return type: either explicit annotation or inferred from body
+    // Determine return type: either explicit annotation or inferred from expression body.
     Type* returnType;
     if (lambda->returnType != NULL) {
         returnType = resolveTypeNode(checker, lambda->returnType);
-        // Check that body matches declared return type
+    } else {
+        returnType = createUnknownType();
+    }
+
+    if (lambda->isBlockBody) {
+        Type* previousReturn = checker->currentFunctionReturn;
+        checker->currentFunctionReturn = returnType;
+        checkStmt(checker, lambda->blockBody);
+        checker->currentFunctionReturn = previousReturn;
+    } else if (lambda->returnType != NULL) {
         Type* bodyType = checkExpr(checker, lambda->body);
         if (!typeIsAssignableTo(bodyType, returnType) &&
             bodyType->kind != TYPE_UNKNOWN && bodyType->kind != TYPE_ERROR) {
             typeError(checker, expr->line, "Lambda body type doesn't match declared return type.");
         }
     } else {
-        // Infer return type from body expression
+        // Infer return type from expression body.
         returnType = checkExpr(checker, lambda->body);
     }
 
     endScope(checker);
 
     return createFunctionType(paramTypes, lambda->paramCount, returnType);
+}
+
+static Type* checkMatchPatternExpr(TypeChecker* checker, Expr* expr, Type* valueType, int line) {
+    if (expr == NULL) return createErrorType();
+
+    switch (expr->kind) {
+        case EXPR_LITERAL:
+            return checkLiteral(checker, expr);
+
+        case EXPR_VARIABLE: {
+            Symbol* sym = lookupSymbol(checker, expr->as.variable.name.start, expr->as.variable.name.length);
+            if (sym == NULL) {
+                typeErrorFormat(checker, line, "Undefined variable '%.*s'.",
+                                expr->as.variable.name.length, expr->as.variable.name.start);
+                return createErrorType();
+            }
+            Type* st = sym->type;
+            if (st->kind == TYPE_FUNCTION) {
+                FunctionType* ft = &st->as.function;
+                if (typesEqual(ft->returnType, valueType) || valueType->kind == TYPE_UNKNOWN) {
+                    return valueType->kind == TYPE_UNKNOWN ? ft->returnType : valueType;
+                }
+            }
+            if (typesEqual(st, valueType)) {
+                return st;
+            }
+            return st;
+        }
+
+        case EXPR_CALL: {
+            CallExpr* call = &expr->as.call;
+            if (call->callee->kind != EXPR_VARIABLE || call->explicitTypeArgCount > 0) {
+                return checkExpr(checker, expr);
+            }
+            VariableExpr* calleeVar = &call->callee->as.variable;
+            Symbol* sym = lookupSymbol(checker, calleeVar->name.start, calleeVar->name.length);
+            if (sym == NULL) {
+                typeErrorFormat(checker, line, "Undefined callee '%.*s'.",
+                                calleeVar->name.length, calleeVar->name.start);
+                return createErrorType();
+            }
+            Type* calleeType = sym->type;
+            if (calleeType->kind == TYPE_FUNCTION) {
+                FunctionType* ft = &calleeType->as.function;
+                if (typesEqual(ft->returnType, valueType) || valueType->kind == TYPE_UNKNOWN) {
+                    if (call->argCount != ft->paramCount) {
+                        typeErrorFormat(checker, line, "Pattern expects %d argument(s) for this variant.",
+                                        ft->paramCount);
+                        return createErrorType();
+                    }
+                    for (int i = 0; i < call->argCount; i++) {
+                        Expr* arg = call->arguments[i];
+                        if (arg->kind == EXPR_VARIABLE) {
+                            VariableExpr* av = &arg->as.variable;
+                            defineSymbol(checker, av->name.start, av->name.length, ft->paramTypes[i], false);
+                        } else {
+                            Type* at = checkExpr(checker, arg);
+                            if (!typeIsAssignableTo(at, ft->paramTypes[i])) {
+                                typeError(checker, line, "Pattern argument type mismatch.");
+                            }
+                        }
+                    }
+                    return ft->returnType;
+                }
+            }
+            return checkExpr(checker, expr);
+        }
+
+        default:
+            return checkExpr(checker, expr);
+    }
+}
+
+static Type* checkMatchPatternCase(TypeChecker* checker, Expr* pattern, Token* destructureParams,
+                                   int destructureCount, Type* valueType, int line) {
+    if (pattern == NULL) return createErrorType();
+
+    if (destructureCount > 0 && pattern->kind == EXPR_VARIABLE) {
+        VariableExpr* ve = &pattern->as.variable;
+        Symbol* sym = lookupSymbol(checker, ve->name.start, ve->name.length);
+        if (sym != NULL && sym->type->kind == TYPE_CLASS && typesEqual(sym->type, valueType)) {
+            typeErrorFormat(checker, line,
+                            "This variant has no payload; remove the '(...)' bindings after the name.");
+            return sym->type;
+        }
+        if (sym != NULL && sym->type->kind == TYPE_FUNCTION) {
+            FunctionType* ft = &sym->type->as.function;
+            if (typesEqual(ft->returnType, valueType) || valueType->kind == TYPE_UNKNOWN) {
+                if (destructureCount != ft->paramCount) {
+                    typeErrorFormat(checker, line, "Pattern expects %d binding(s) but this variant has %d field(s).",
+                                    destructureCount, ft->paramCount);
+                } else {
+                    for (int j = 0; j < destructureCount; j++) {
+                        defineSymbol(checker, destructureParams[j].start, destructureParams[j].length,
+                                     ft->paramTypes[j], false);
+                    }
+                }
+                return ft->returnType;
+            }
+        }
+    }
+
+    Type* patternType = checkMatchPatternExpr(checker, pattern, valueType, line);
+
+    if (destructureCount > 0) {
+        for (int j = 0; j < destructureCount; j++) {
+            defineSymbol(checker, destructureParams[j].start, destructureParams[j].length,
+                         createUnknownType(), false);
+        }
+    }
+
+    return patternType;
 }
 
 static Type* checkMatch(TypeChecker* checker, Expr* expr) {
@@ -869,12 +1129,19 @@ static Type* checkMatch(TypeChecker* checker, Expr* expr) {
     for (int i = 0; i < match->caseCount; i++) {
         ExprCaseClause* caseClause = &match->cases[i];
 
-        // Check pattern (unless it's a wildcard)
-        if (!caseClause->isWildcard) {
-            Type* patternType = checkExpr(checker, caseClause->pattern);
+        beginScope(checker);
 
-            // Pattern should be assignable to match value type
-            if (!typeIsAssignableTo(patternType, matchValueType)) {
+        // Check pattern (unless it's a wildcard)
+        if (!caseClause->isWildcard && caseClause->pattern != NULL) {
+            Type* patternType = checkMatchPatternCase(checker, caseClause->pattern,
+                                                      caseClause->destructureParams,
+                                                      caseClause->destructureCount,
+                                                      matchValueType, expr->line);
+
+            if (!typeIsAssignableTo(patternType, matchValueType) &&
+                matchValueType->kind != TYPE_INSTANCE &&
+                matchValueType->kind != TYPE_CLASS &&
+                matchValueType->kind != TYPE_UNKNOWN) {
                 typeError(checker, expr->line,
                     "Match pattern type does not match the value being matched.");
             }
@@ -883,6 +1150,8 @@ static Type* checkMatch(TypeChecker* checker, Expr* expr) {
         // Check the result value expression
         Type* valueType = checkExpr(checker, caseClause->value);
         resultTypes[resultCount++] = valueType;
+
+        endScope(checker);
     }
 
     // Determine the result type: if all arms return the same type, use that;
@@ -1023,6 +1292,78 @@ static void checkPrintStmt(TypeChecker* checker, Stmt* stmt) {
 static void checkVarStmt(TypeChecker* checker, Stmt* stmt) {
     VarStmt* var = &stmt->as.var;
 
+    // Handle destructuring
+    if (var->destructureKind == DESTRUCTURE_ARRAY) {
+        if (var->initializer == NULL) {
+            typeError(checker, stmt->line, "Array destructuring requires an initializer.");
+            return;
+        }
+
+        // Check initializer type - must be an array
+        Type* initType = checkExpr(checker, var->initializer);
+
+        if (initType->kind != TYPE_ARRAY) {
+            typeError(checker, stmt->line, "Cannot destructure non-array value.");
+            return;
+        }
+
+        Type* elementType = initType->as.array.elementType;
+
+        // If there's a type annotation, verify it's an array type
+        if (var->typeAnnotation != NULL) {
+            Type* declaredType = resolveTypeNode(checker, var->typeAnnotation);
+            if (declaredType->kind != TYPE_ARRAY) {
+                typeError(checker, stmt->line, "Destructuring type annotation must be an array type.");
+            } else if (!typeIsAssignableTo(elementType, declaredType->as.array.elementType)) {
+                typeError(checker, stmt->line, "Array element type doesn't match declared type.");
+            }
+        }
+
+        // Define each destructured variable
+        for (int i = 0; i < var->destructureCount; i++) {
+            Token name = var->destructureNames[i];
+            Type* varType;
+
+            // Rest parameter gets array type, others get element type
+            if (i == var->restIndex) {
+                varType = initType; // Same array type
+            } else {
+                varType = elementType;
+            }
+
+            defineSymbol(checker, name.start, name.length, varType, var->isConst);
+        }
+
+        var->type = initType;
+        return;
+    } else if (var->destructureKind == DESTRUCTURE_OBJECT) {
+        if (var->initializer == NULL) {
+            typeError(checker, stmt->line, "Object destructuring requires an initializer.");
+            return;
+        }
+
+        // Check initializer type - must be a class instance
+        Type* initType = checkExpr(checker, var->initializer);
+
+        if (initType->kind != TYPE_CLASS && initType->kind != TYPE_INSTANCE && initType->kind != TYPE_UNKNOWN) {
+            typeError(checker, stmt->line, "Cannot destructure non-object value.");
+            return;
+        }
+
+        // Define each destructured variable
+        // Note: We use createUnknownType() for each field since we don't have full
+        // class metadata at compile time. Property existence will be checked at runtime.
+        for (int i = 0; i < var->destructureCount; i++) {
+            Token name = var->destructureNames[i];
+            Type* fieldType = createUnknownType();
+            defineSymbol(checker, name.start, name.length, fieldType, var->isConst);
+        }
+
+        var->type = initType;
+        return;
+    }
+
+    // Simple variable declaration
     Type* declaredType = NULL;
     if (var->typeAnnotation != NULL) {
         declaredType = resolveTypeNode(checker, var->typeAnnotation);
@@ -1162,6 +1503,14 @@ static void checkForStmt(TypeChecker* checker, Stmt* stmt) {
 static void checkFunctionStmt(TypeChecker* checker, Stmt* stmt) {
     FunctionStmt* func = &stmt->as.function;
 
+    // Type parameters are in scope for signature resolution and body checking.
+    beginScope(checker);
+    for (int i = 0; i < func->typeParamCount; i++) {
+        Token tp = func->typeParams[i];
+        Type* tpType = createTypeParamType(tp.start, tp.length, i);
+        defineSymbol(checker, tp.start, tp.length, tpType, true);
+    }
+
     // Build function type
     Type** paramTypes = NULL;
     if (func->paramCount > 0) {
@@ -1179,6 +1528,8 @@ static void checkFunctionStmt(TypeChecker* checker, Stmt* stmt) {
     Type* funcType = createFunctionType(paramTypes, func->paramCount, returnType);
     func->type = funcType;
 
+    endScope(checker);
+
     // Define the function in current scope
     defineSymbol(checker, func->name.start, func->name.length, funcType, true);
 
@@ -1187,6 +1538,13 @@ static void checkFunctionStmt(TypeChecker* checker, Stmt* stmt) {
     checker->currentFunctionReturn = returnType;
 
     beginScope(checker);
+
+    // Re-introduce type parameters inside the function body scope.
+    for (int i = 0; i < func->typeParamCount; i++) {
+        Token tp = func->typeParams[i];
+        Type* tpType = createTypeParamType(tp.start, tp.length, i);
+        defineSymbol(checker, tp.start, tp.length, tpType, true);
+    }
 
     // Define parameters
     for (int i = 0; i < func->paramCount; i++) {
@@ -1223,8 +1581,228 @@ static void checkReturnStmt(TypeChecker* checker, Stmt* stmt) {
     }
 }
 
+static void checkTypeAliasStmt(TypeChecker* checker, Stmt* stmt) {
+    TypeAliasStmt* alias = &stmt->as.type_alias;
+    Type* target = resolveTypeNode(checker, alias->target);
+    defineSymbol(checker, alias->name.start, alias->name.length, target, true);
+}
+
+static bool classStmtSatisfiesInterface(TypeChecker* checker, ClassStmt* classStmt, Type* ifaceType) {
+    InterfaceType* iface = ifaceType->as.interfaceType;
+    for (int i = 0; i < iface->methodCount; i++) {
+        const char* want = iface->methodNameStarts[i];
+        int wantLen = iface->methodNameLengths[i];
+        Type* required = iface->methodSignatures[i];
+        bool found = false;
+        for (int j = 0; j < classStmt->methodCount; j++) {
+            FunctionStmt* m = &classStmt->methods[j];
+            if (m->name.length == wantLen && memcmp(m->name.start, want, (size_t)wantLen) == 0) {
+                found = true;
+                if (!typesEqual(m->type, required)) {
+                    typeErrorFormat(checker, classStmt->name.line,
+                                    "Method '%.*s' does not match interface.", wantLen, want);
+                    return false;
+                }
+                break;
+            }
+        }
+        if (!found) {
+            typeErrorFormat(checker, classStmt->name.line, "Missing interface method '%.*s'.",
+                            wantLen, want);
+            return false;
+        }
+    }
+    return true;
+}
+
+static void applyImplementsToClassType(Type* classType, ClassStmt* classStmt, TypeChecker* checker) {
+    if (classStmt->implementsCount == 0) return;
+    if (classType->kind != TYPE_CLASS) return;
+    ClassType* ct = classType->as.classType;
+    ct->implementedInterfaces = ALLOCATE(Type*, classStmt->implementsCount);
+    ct->implementedInterfaceCount = classStmt->implementsCount;
+    for (int i = 0; i < classStmt->implementsCount; i++) {
+        Token iname = classStmt->implementsNames[i];
+        Symbol* sym = lookupSymbol(checker, iname.start, iname.length);
+        if (sym == NULL || sym->type->kind != TYPE_INTERFACE) {
+            typeErrorFormat(checker, classStmt->name.line, "Unknown interface '%.*s'.",
+                            iname.length, iname.start);
+            ct->implementedInterfaces[i] = createErrorType();
+            continue;
+        }
+        ct->implementedInterfaces[i] = sym->type;
+        classStmtSatisfiesInterface(checker, classStmt, sym->type);
+    }
+}
+
+static void checkInterfaceStmt(TypeChecker* checker, Stmt* stmt) {
+    InterfaceStmt* is = &stmt->as.interface_;
+    int n = is->methodCount;
+    Type** sigs = ALLOCATE(Type*, n);
+    const char** starts = ALLOCATE(const char*, n);
+    int* lens = ALLOCATE(int, n);
+    for (int i = 0; i < n; i++) {
+        InterfaceMethodDecl* m = &is->methods[i];
+        Type** pts = NULL;
+        if (m->paramCount > 0) {
+            pts = ALLOCATE(Type*, m->paramCount);
+            for (int j = 0; j < m->paramCount; j++) {
+                pts[j] = resolveTypeNode(checker, m->paramTypes[j]);
+            }
+        }
+        Type* ret = createNilType();
+        if (m->returnType != NULL) ret = resolveTypeNode(checker, m->returnType);
+        sigs[i] = createFunctionType(pts, m->paramCount, ret);
+        starts[i] = m->name.start;
+        lens[i] = m->name.length;
+    }
+    Type* iface = createInterfaceType(is->name.start, is->name.length, starts, lens, sigs, n);
+    FREE_ARRAY(const char*, starts, n);
+    FREE_ARRAY(int, lens, n);
+    is->type = iface;
+    defineSymbol(checker, is->name.start, is->name.length, iface, true);
+}
+
+static void verifyImplementsForInstantiation(TypeChecker* checker, Stmt* stmt, ClassStmt* cs,
+                                             Type** repl) {
+    if (cs->implementsCount == 0) return;
+    for (int ii = 0; ii < cs->implementsCount; ii++) {
+        Token iname = cs->implementsNames[ii];
+        Symbol* sym = lookupSymbol(checker, iname.start, iname.length);
+        if (sym == NULL || sym->type->kind != TYPE_INTERFACE) {
+            typeErrorFormat(checker, stmt->line, "Unknown interface '%.*s'.",
+                            iname.length, iname.start);
+            continue;
+        }
+        InterfaceType* iface = sym->type->as.interfaceType;
+        for (int mi = 0; mi < iface->methodCount; mi++) {
+            const char* want = iface->methodNameStarts[mi];
+            int wantLen = iface->methodNameLengths[mi];
+            Type* required = iface->methodSignatures[mi];
+            bool found = false;
+            for (int j = 0; j < cs->methodCount; j++) {
+                FunctionStmt* m = &cs->methods[j];
+                if (m->name.length == wantLen && memcmp(m->name.start, want, (size_t)wantLen) == 0) {
+                    found = true;
+                    FunctionType* ft = &m->type->as.function;
+                    Type** subParams = NULL;
+                    if (m->paramCount > 0) {
+                        subParams = ALLOCATE(Type*, m->paramCount);
+                        for (int k = 0; k < m->paramCount; k++) {
+                            subParams[k] = substituteTypeInType(ft->paramTypes[k], repl,
+                                                                cs->typeParamCount);
+                        }
+                    }
+                    Type* subRet = substituteTypeInType(ft->returnType, repl, cs->typeParamCount);
+                    Type* got = createFunctionType(subParams, m->paramCount, subRet);
+                    if (!typesEqual(got, required)) {
+                        typeErrorFormat(checker, stmt->line,
+                                        "Method '%.*s' does not match interface for this generic instantiation.",
+                                        wantLen, want);
+                    }
+                    freeType(got);
+                    break;
+                }
+            }
+            if (!found) {
+                typeErrorFormat(checker, stmt->line, "Missing interface method '%.*s'.",
+                                wantLen, want);
+            }
+        }
+    }
+}
+
+static bool typeUsesOnlyClassTypeParams(Type* t, int typeParamCount) {
+    if (t == NULL) return true;
+    switch (t->kind) {
+        case TYPE_TYPE_PARAM:
+            return t->as.typeParam.index >= 0 && t->as.typeParam.index < typeParamCount;
+        case TYPE_ARRAY:
+            return typeUsesOnlyClassTypeParams(t->as.array.elementType, typeParamCount);
+        case TYPE_OPTIONAL:
+            return typeUsesOnlyClassTypeParams(t->as.optional.innerType, typeParamCount);
+        case TYPE_FUNCTION: {
+            FunctionType* fn = &t->as.function;
+            for (int i = 0; i < fn->paramCount; i++) {
+                if (!typeUsesOnlyClassTypeParams(fn->paramTypes[i], typeParamCount)) return false;
+            }
+            return typeUsesOnlyClassTypeParams(fn->returnType, typeParamCount);
+        }
+        case TYPE_UNION: {
+            UnionType* u = &t->as.unionType;
+            for (int i = 0; i < u->typeCount; i++) {
+                if (!typeUsesOnlyClassTypeParams(u->types[i], typeParamCount)) return false;
+            }
+            return true;
+        }
+        case TYPE_GENERIC_INST: {
+            GenericInst* gi = &t->as.genericInst;
+            for (int i = 0; i < gi->typeArgCount; i++) {
+                if (!typeUsesOnlyClassTypeParams(gi->typeArgs[i], typeParamCount)) return false;
+            }
+            return true;
+        }
+        case TYPE_ERROR:
+            return true;
+        default:
+            return true;
+    }
+}
+
 static void checkClassStmt(TypeChecker* checker, Stmt* stmt) {
     ClassStmt* classStmt = &stmt->as.class_;
+
+    if (classStmt->typeParamCount > 0) {
+        Type* templateType = createGenericClassTemplateType(
+            classStmt->name.start, classStmt->name.length, stmt);
+        if (classStmt->typeParamVariances != NULL) {
+            attachGenericTemplateVariances(templateType, classStmt->typeParamVariances,
+                                           classStmt->typeParamCount);
+        }
+        classStmt->type = templateType;
+        defineSymbol(checker, classStmt->name.start, classStmt->name.length,
+                     templateType, true);
+
+        beginScope(checker);
+        for (int i = 0; i < classStmt->typeParamCount; i++) {
+            Token tp = classStmt->typeParams[i];
+            Type* tpType = createTypeParamType(tp.start, tp.length, i);
+            defineSymbol(checker, tp.start, tp.length, tpType, true);
+        }
+
+        for (int i = 0; i < classStmt->fieldCount; i++) {
+            (void)resolveTypeNode(checker, classStmt->fields[i].type);
+        }
+
+        for (int i = 0; i < classStmt->methodCount; i++) {
+            FunctionStmt* method = &classStmt->methods[i];
+            Type** paramTypes = NULL;
+            if (method->paramCount > 0) {
+                paramTypes = ALLOCATE(Type*, method->paramCount);
+                for (int j = 0; j < method->paramCount; j++) {
+                    paramTypes[j] = resolveTypeNode(checker, method->paramTypes[j]);
+                }
+            }
+            Type* returnType = createNilType();
+            if (method->returnType != NULL) {
+                returnType = resolveTypeNode(checker, method->returnType);
+            }
+            method->type = createFunctionType(paramTypes, method->paramCount, returnType);
+        }
+
+        if (classStmt->superclassType != NULL) {
+            classStmt->superclassResolved = resolveTypeNode(checker, classStmt->superclassType);
+            Type* st = classStmt->superclassResolved;
+            if (st != NULL && st->kind != TYPE_ERROR &&
+                !typeUsesOnlyClassTypeParams(st, classStmt->typeParamCount)) {
+                typeError(checker, stmt->line,
+                          "Superclass may only use this class's type parameters (or concrete types).");
+            }
+        }
+
+        endScope(checker);
+        return;
+    }
 
     // Create class type
     Type* classType = createClassType(classStmt->name.start, classStmt->name.length);
@@ -1233,6 +1811,14 @@ static void checkClassStmt(TypeChecker* checker, Stmt* stmt) {
     // Define the class in current scope
     defineSymbol(checker, classStmt->name.start, classStmt->name.length,
                  classType, true);
+
+    if (classStmt->superclassType != NULL) {
+        Type* st = resolveTypeNode(checker, classStmt->superclassType);
+        classStmt->superclassResolved = st;
+        if (st->kind == TYPE_CLASS) {
+            classType->as.classType->superclass = st->as.classType;
+        }
+    }
 
     // Set current class for 'this' checking
     Type* previousClass = checker->currentClass;
@@ -1277,7 +1863,126 @@ static void checkClassStmt(TypeChecker* checker, Stmt* stmt) {
         checker->currentFunctionReturn = previousReturn;
     }
 
+    applyImplementsToClassType(classType, classStmt, checker);
+
     checker->currentClass = previousClass;
+}
+
+static void checkGenericInstanceBodies(TypeChecker* checker) {
+    for (int gi = 0; gi < checker->genericInstCount; gi++) {
+        GenericInstToCheck* g = &checker->genericInsts[gi];
+        Stmt* stmt = g->templateStmt;
+        ClassStmt* cs = &stmt->as.class_;
+        Type* inst = g->instType;
+
+        Type** repl = ALLOCATE(Type*, cs->typeParamCount);
+        for (int j = 0; j < cs->typeParamCount; j++) {
+            repl[j] = inst->as.genericInst.typeArgs[j];
+        }
+
+        Type* prevClass = checker->currentClass;
+        checker->currentClass = inst;
+
+        for (int mi = 0; mi < cs->methodCount; mi++) {
+            FunctionStmt* method = &cs->methods[mi];
+            FunctionType* ft = &method->type->as.function;
+
+            Type** paramTypes = NULL;
+            if (method->paramCount > 0) {
+                paramTypes = ALLOCATE(Type*, method->paramCount);
+                for (int j = 0; j < method->paramCount; j++) {
+                    paramTypes[j] = substituteTypeInType(ft->paramTypes[j], repl, cs->typeParamCount);
+                }
+            }
+            Type* returnType = substituteTypeInType(ft->returnType, repl, cs->typeParamCount);
+
+            Type* previousReturn = checker->currentFunctionReturn;
+            checker->currentFunctionReturn = returnType;
+
+            beginScope(checker);
+
+            Token thisTok;
+            thisTok.start = "this";
+            thisTok.length = 4;
+            thisTok.line = stmt->line;
+            defineSymbol(checker, thisTok.start, thisTok.length, inst, false);
+
+            for (int j = 0; j < method->paramCount; j++) {
+                defineSymbol(checker, method->params[j].start, method->params[j].length,
+                             paramTypes[j], false);
+            }
+
+            checkStmt(checker, method->body);
+
+            endScope(checker);
+            checker->currentFunctionReturn = previousReturn;
+
+            if (paramTypes != NULL) {
+                FREE_ARRAY(Type*, paramTypes, method->paramCount);
+            }
+        }
+
+        verifyImplementsForInstantiation(checker, stmt, cs, repl);
+
+        FREE_ARRAY(Type*, repl, cs->typeParamCount);
+        checker->currentClass = prevClass;
+    }
+}
+
+static void checkEnumStmt(TypeChecker* checker, Stmt* stmt) {
+    EnumStmt* enumStmt = &stmt->as.enum_;
+
+    // Create enum type
+    Type* enumType = createClassType(enumStmt->name.start, enumStmt->name.length);
+    enumStmt->type = enumType;
+
+    // Define the enum in current scope
+    defineSymbol(checker, enumStmt->name.start, enumStmt->name.length, enumType, true);
+
+    // Define variants in current scope as functions or constants
+    for (int i = 0; i < enumStmt->variantCount; i++) {
+        EnumVariant* v = &enumStmt->variants[i];
+
+        Type* variantType;
+        if (v->fieldCount > 0) {
+            // Variant with fields is a constructor function
+            Type** fieldTypes = ALLOCATE(Type*, v->fieldCount);
+            for (int j = 0; j < v->fieldCount; j++) {
+                fieldTypes[j] = resolveTypeNode(checker, v->fieldTypes[j]);
+            }
+            variantType = createFunctionType(fieldTypes, v->fieldCount, enumType);
+        } else {
+            // Variant without fields is a constant of the enum type
+            variantType = enumType;
+        }
+
+        defineSymbol(checker, v->name.start, v->name.length, variantType, true);
+    }
+}
+
+static void checkMatchStmt(TypeChecker* checker, Stmt* stmt) {
+    MatchStmt* matchStmt = &stmt->as.match;
+    Type* valueType = checkExpr(checker, matchStmt->value);
+
+    for (int i = 0; i < matchStmt->caseCount; i++) {
+        CaseClause* c = &matchStmt->cases[i];
+
+        beginScope(checker);
+
+        if (!c->isWildcard && c->pattern != NULL) {
+            Type* patternType = checkMatchPatternCase(checker, c->pattern, c->destructureParams,
+                                                      c->destructureCount, valueType, stmt->line);
+            if (!typeIsAssignableTo(patternType, valueType) &&
+                valueType->kind != TYPE_INSTANCE &&
+                valueType->kind != TYPE_CLASS &&
+                valueType->kind != TYPE_UNKNOWN) {
+                typeError(checker, stmt->line, "Match pattern type doesn't match value type.");
+            }
+        }
+
+        checkStmt(checker, c->body);
+        endScope(checker);
+    }
 }
 
 static void checkStmt(TypeChecker* checker, Stmt* stmt) {
@@ -1314,25 +2019,18 @@ static void checkStmt(TypeChecker* checker, Stmt* stmt) {
         case STMT_CLASS:
             checkClassStmt(checker, stmt);
             break;
-        case STMT_MATCH: {
-            MatchStmt* matchStmt = &stmt->as.match;
-            Type* valueType = checkExpr(checker, matchStmt->value);
-
-            for (int i = 0; i < matchStmt->caseCount; i++) {
-                CaseClause* c = &matchStmt->cases[i];
-                if (!c->isWildcard && c->pattern != NULL) {
-                    Type* patternType = checkExpr(checker, c->pattern);
-                    // Check that pattern type matches value type
-                    if (!typesEqual(valueType, patternType) &&
-                        valueType->kind != TYPE_UNKNOWN &&
-                        patternType->kind != TYPE_UNKNOWN) {
-                        typeError(checker, stmt->line, "Match pattern type doesn't match value type.");
-                    }
-                }
-                checkStmt(checker, c->body);
-            }
+        case STMT_INTERFACE:
+            checkInterfaceStmt(checker, stmt);
             break;
-        }
+        case STMT_TYPE_ALIAS:
+            checkTypeAliasStmt(checker, stmt);
+            break;
+        case STMT_ENUM:
+            checkEnumStmt(checker, stmt);
+            break;
+        case STMT_MATCH:
+            checkMatchStmt(checker, stmt);
+            break;
         case STMT_TRY: {
             TryStmt* tryStmt = &stmt->as.try_;
             checkStmt(checker, tryStmt->tryBody);
@@ -1380,6 +2078,9 @@ void initTypeChecker(TypeChecker* checker) {
     checker->currentFunctionReturn = NULL;
     checker->currentClass = NULL;
     checker->hadError = false;
+    checker->genericInsts = NULL;
+    checker->genericInstCount = 0;
+    checker->genericInstCapacity = 0;
 
     // Define built-in native functions
 
@@ -1670,12 +2371,19 @@ void initTypeChecker(TypeChecker* checker) {
 }
 
 void freeTypeChecker(TypeChecker* checker) {
+    FREE_ARRAY(GenericInstToCheck, checker->genericInsts, checker->genericInstCapacity);
+    checker->genericInsts = NULL;
+    checker->genericInstCount = 0;
+    checker->genericInstCapacity = 0;
     freeSymbolTable(&checker->symbols);
 }
 
 bool typeCheck(TypeChecker* checker, Stmt** statements, int count) {
     for (int i = 0; i < count; i++) {
         checkStmt(checker, statements[i]);
+    }
+    if (!checker->hadError) {
+        checkGenericInstanceBodies(checker);
     }
     return !checker->hadError;
 }
