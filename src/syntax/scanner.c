@@ -281,8 +281,10 @@ Token scanToken(Scanner* scanner) {
             if (match(scanner, '>')) return makeToken(scanner, TOKEN_FAT_ARROW);
             return makeToken(scanner, TOKEN_EQUAL);
         case '<':
+            if (match(scanner, '<')) return makeToken(scanner, TOKEN_LSHIFT);
             return makeToken(scanner, match(scanner, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
         case '>':
+            if (match(scanner, '>')) return makeToken(scanner, TOKEN_RSHIFT);
             return makeToken(scanner, match(scanner, '=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
         case '-':
             return makeToken(scanner, match(scanner, '>') ? TOKEN_ARROW : TOKEN_MINUS);
@@ -300,9 +302,13 @@ Token scanToken(Scanner* scanner) {
             return makeToken(scanner, TOKEN_DOT);
         case '&':
             if (match(scanner, '&')) return makeToken(scanner, TOKEN_AND);
-            return errorToken(scanner, "Expected '&' after '&'.");
+            return makeToken(scanner, TOKEN_AMPERSAND);
         case '|':
             return makeToken(scanner, match(scanner, '|') ? TOKEN_OR : TOKEN_PIPE);
+        case '^':
+            return makeToken(scanner, TOKEN_CARET);
+        case '~':
+            return makeToken(scanner, TOKEN_TILDE);
         case '?':
             if (match(scanner, '.')) return makeToken(scanner, TOKEN_QUESTION_DOT);
             if (match(scanner, '?')) return makeToken(scanner, TOKEN_QUESTION_QUESTION);
@@ -352,6 +358,11 @@ const char* tokenTypeName(TokenType type) {
         case TOKEN_AND:           return "AND";
         case TOKEN_OR:            return "OR";
         case TOKEN_PIPE:          return "PIPE";
+        case TOKEN_AMPERSAND:     return "AMPERSAND";
+        case TOKEN_CARET:         return "CARET";
+        case TOKEN_TILDE:         return "TILDE";
+        case TOKEN_LSHIFT:       return "LSHIFT";
+        case TOKEN_RSHIFT:       return "RSHIFT";
         case TOKEN_QUESTION:      return "QUESTION";
         case TOKEN_QUESTION_DOT:  return "QUESTION_DOT";
         case TOKEN_QUESTION_QUESTION: return "QUESTION_QUESTION";

@@ -1,0 +1,4 @@
+let y: int = 5
+let z: int = (y & 3)
+print(z << 1)
+

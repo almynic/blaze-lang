@@ -11,6 +11,7 @@
 #include "module.h"
 #include "generic.h"
 #include <stdarg.h>
+#include <stdlib.h>
 #include <time.h>
 #include <math.h>
 
@@ -1366,8 +1367,10 @@ static InterpretResult executeLegacy(VM* vm) {
                 break;
 
             case OP_DIVIDE_INT: {
-                int64_t b = AS_INT(pop(vm));
-                int64_t a = AS_INT(pop(vm));
+                Value bVal = pop(vm);
+                Value aVal = pop(vm);
+                int64_t b = AS_INT(bVal);
+                int64_t a = AS_INT(aVal);
                 if (b == 0) {
                     runtimeError(vm, "Division by zero.");
                     return INTERPRET_RUNTIME_ERROR;
@@ -1377,8 +1380,10 @@ static InterpretResult executeLegacy(VM* vm) {
             }
 
             case OP_MODULO_INT: {
-                int64_t b = AS_INT(pop(vm));
-                int64_t a = AS_INT(pop(vm));
+                Value bVal = pop(vm);
+                Value aVal = pop(vm);
+                int64_t b = AS_INT(bVal);
+                int64_t a = AS_INT(aVal);
                 if (b == 0) {
                     runtimeError(vm, "Division by zero.");
                     return INTERPRET_RUNTIME_ERROR;
@@ -1388,7 +1393,53 @@ static InterpretResult executeLegacy(VM* vm) {
             }
 
             case OP_NEGATE_INT: {
-                push(vm, INT_VAL(-AS_INT(pop(vm))));
+                Value value = pop(vm);
+                push(vm, INT_VAL(-AS_INT(value)));
+                break;
+            }
+
+            case OP_BITWISE_NOT_INT: {
+                Value value = pop(vm);
+                push(vm, INT_VAL(~AS_INT(value)));
+                break;
+            }
+
+            case OP_BITWISE_AND_INT:
+                BINARY_OP_INT(&);
+                break;
+
+            case OP_BITWISE_OR_INT:
+                BINARY_OP_INT(|);
+                break;
+
+            case OP_BITWISE_XOR_INT:
+                BINARY_OP_INT(^);
+                break;
+
+            case OP_SHIFT_LEFT_INT: {
+                Value shiftV = pop(vm);
+                Value valueV = pop(vm);
+                int64_t shift = AS_INT(shiftV);
+                int64_t value = AS_INT(valueV);
+                if (shift < 0 || shift >= 64) {
+                    runtimeError(vm, "Invalid shift amount.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                push(vm, INT_VAL(value << shift));
+                break;
+            }
+
+            case OP_SHIFT_RIGHT_INT: {
+                Value shiftVal = pop(vm);
+                Value valueVal = pop(vm);
+                int64_t shift = AS_INT(shiftVal);
+                int64_t value = AS_INT(valueVal);
+                if (shift < 0 || shift >= 64) {
+                    runtimeError(vm, "Invalid shift amount.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // Signed right shift: arithmetic shift on two's complement machines.
+                push(vm, INT_VAL(value >> shift));
                 break;
             }
 
@@ -1445,7 +1496,8 @@ static InterpretResult executeLegacy(VM* vm) {
             }
 
             case OP_INT_TO_FLOAT: {
-                int64_t value = AS_INT(pop(vm));
+                Value valueVal = pop(vm);
+                int64_t value = AS_INT(valueVal);
                 push(vm, FLOAT_VAL((double)value));
                 break;
             }
@@ -1614,7 +1666,9 @@ static InterpretResult executeLegacy(VM* vm) {
             }
 
             default:
-                runtimeError(vm, "Unknown opcode %d.", instruction);
+                runtimeError(vm, "Unknown opcode %d at offset %ld.",
+                             instruction,
+                             (long)((vm->ip - vm->chunk->code) - 1));
                 return INTERPRET_RUNTIME_ERROR;
         }
     }
@@ -1685,6 +1739,14 @@ static InterpretResult executeWithFrames(VM* vm) {
             case OP_CONSTANT: {
                 Value constant = READ_CONSTANT();
                 push(vm, constant);
+                break;
+            }
+
+            case OP_CONSTANT_LONG: {
+                uint32_t index = READ_BYTE();
+                index |= (uint32_t)READ_BYTE() << 8;
+                index |= (uint32_t)READ_BYTE() << 16;
+                push(vm, frame->closure->function->chunk.constants.values[index]);
                 break;
             }
 
@@ -1775,8 +1837,10 @@ static InterpretResult executeWithFrames(VM* vm) {
                 break;
 
             case OP_DIVIDE_INT: {
-                int64_t b = AS_INT(pop(vm));
-                int64_t a = AS_INT(pop(vm));
+                Value bVal = pop(vm);
+                Value aVal = pop(vm);
+                int64_t b = AS_INT(bVal);
+                int64_t a = AS_INT(aVal);
                 if (b == 0) {
                     runtimeError(vm, "Division by zero.");
                     return INTERPRET_RUNTIME_ERROR;
@@ -1786,8 +1850,10 @@ static InterpretResult executeWithFrames(VM* vm) {
             }
 
             case OP_MODULO_INT: {
-                int64_t b = AS_INT(pop(vm));
-                int64_t a = AS_INT(pop(vm));
+                Value bVal = pop(vm);
+                Value aVal = pop(vm);
+                int64_t b = AS_INT(bVal);
+                int64_t a = AS_INT(aVal);
                 if (b == 0) {
                     runtimeError(vm, "Division by zero.");
                     return INTERPRET_RUNTIME_ERROR;
@@ -1797,8 +1863,57 @@ static InterpretResult executeWithFrames(VM* vm) {
             }
 
             case OP_NEGATE_INT:
-                push(vm, INT_VAL(-AS_INT(pop(vm))));
+                {
+                    Value value = pop(vm);
+                    push(vm, INT_VAL(-AS_INT(value)));
+                }
                 break;
+
+            case OP_BITWISE_NOT_INT:
+                {
+                    Value value = pop(vm);
+                    push(vm, INT_VAL(~AS_INT(value)));
+                }
+                break;
+
+            case OP_BITWISE_AND_INT:
+                BINARY_OP_INT(&);
+                break;
+
+            case OP_BITWISE_OR_INT:
+                BINARY_OP_INT(|);
+                break;
+
+            case OP_BITWISE_XOR_INT:
+                BINARY_OP_INT(^);
+                break;
+
+            case OP_SHIFT_LEFT_INT: {
+                Value shiftV = pop(vm);
+                Value valueV = pop(vm);
+                int64_t shift = AS_INT(shiftV);
+                int64_t value = AS_INT(valueV);
+                if (shift < 0 || shift >= 64) {
+                    runtimeError(vm, "Invalid shift amount.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                push(vm, INT_VAL(value << shift));
+                break;
+            }
+
+            case OP_SHIFT_RIGHT_INT: {
+                Value shiftV = pop(vm);
+                Value valueV = pop(vm);
+                int64_t shift = AS_INT(shiftV);
+                int64_t value = AS_INT(valueV);
+                if (shift < 0 || shift >= 64) {
+                    runtimeError(vm, "Invalid shift amount.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // Signed right shift: arithmetic shift on two's complement machines.
+                push(vm, INT_VAL(value >> shift));
+                break;
+            }
 
             case OP_ADD_FLOAT:
                 BINARY_OP_FLOAT(+);
@@ -2390,7 +2505,9 @@ static InterpretResult executeWithFrames(VM* vm) {
             }
 
             default:
-                runtimeError(vm, "Unknown opcode %d.", instruction);
+                runtimeError(vm, "Unknown opcode %d at offset %ld.",
+                             instruction,
+                             (long)((vm->ip - vm->chunk->code) - 1));
                 return INTERPRET_RUNTIME_ERROR;
         }
     }
@@ -2677,6 +2794,14 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
         }
         freeStatements(statements, stmtCount);
         return INTERPRET_COMPILE_ERROR;
+    }
+
+    // Optional: disassemble compiled bytecode for debugging.
+    // Enable via `BLAZE_DISASM=1 blaze <script.blaze>`
+    const char* disasmEnv = getenv("BLAZE_DISASM");
+    if (disasmEnv != NULL && disasmEnv[0] != '\0' && disasmEnv[0] != '0') {
+        disassembleChunk(&function->chunk, "script");
+        fflush(stdout);
     }
 
     // Root the compiled function before freeing the AST: GC may run during

@@ -1,0 +1,4 @@
+let y: int = 5
+let w: int = (y & 3) << 1
+print(w)
+

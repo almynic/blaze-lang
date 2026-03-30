@@ -1,0 +1,14 @@
+// Bitwise operators (Phase 11 - low-level primitives)
+// Expected output (one value per line):
+// 1, 7, 6, -6, 32, 4, 24, 3
+
+print(5 & 3)
+print(5 | 3)
+print(5 ^ 3)
+print(~5)
+
+print(8 << 2)
+print(8 >> 1)
+
+print(1 + 2 << 3)  // (1+2) << 3
+print(1 | 2 & 3)   // 1 | (2 & 3)

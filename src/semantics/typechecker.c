@@ -524,6 +524,13 @@ static Type* checkUnary(TypeChecker* checker, Expr* expr) {
             typeError(checker, expr->line, "Operand of '!' must be a bool.");
             return createErrorType();
 
+        case TOKEN_TILDE:
+            if (operandType->kind == TYPE_INT) {
+                return createIntType();
+            }
+            typeError(checker, expr->line, "Operand of '~' must be an int.");
+            return createErrorType();
+
         default:
             return createErrorType();
     }
@@ -572,6 +579,25 @@ static Type* checkBinary(TypeChecker* checker, Expr* expr) {
                 return createStringType();
             }
             typeError(checker, expr->line, "Invalid operand types for arithmetic operator.");
+            return createErrorType();
+
+        // Bitwise operators (integers only)
+        case TOKEN_AMPERSAND:
+        case TOKEN_PIPE:
+        case TOKEN_CARET:
+            if (leftType->kind == TYPE_INT && rightType->kind == TYPE_INT) {
+                return createIntType();
+            }
+            typeError(checker, expr->line, "Bitwise operators require int operands.");
+            return createErrorType();
+
+        // Shifts (integers only)
+        case TOKEN_LSHIFT:
+        case TOKEN_RSHIFT:
+            if (leftType->kind == TYPE_INT && rightType->kind == TYPE_INT) {
+                return createIntType();
+            }
+            typeError(checker, expr->line, "Shift operators require int operands.");
             return createErrorType();
 
         case TOKEN_PERCENT:

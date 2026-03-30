@@ -402,12 +402,16 @@ typedef enum {
     PREC_ASSIGNMENT,    // =
     PREC_OR,            // ||
     PREC_AND,           // &&
+    PREC_BITWISE_OR,    // |
+    PREC_BITWISE_XOR,   // ^
+    PREC_BITWISE_AND,   // &
     PREC_EQUALITY,      // == !=
     PREC_COMPARISON,    // < > <= >=
+    PREC_SHIFT,         // << >>
     PREC_RANGE,         // ..
     PREC_TERM,          // + -
     PREC_FACTOR,        // * / %
-    PREC_UNARY,         // ! -
+    PREC_UNARY,         // ! - ~
     PREC_CALL,          // . () []
     PREC_PRIMARY
 } Precedence;
@@ -876,6 +880,7 @@ ParseRule rules[] = {
     [TOKEN_SLASH]         = {NULL,     binary, PREC_FACTOR},
     [TOKEN_PERCENT]       = {NULL,     binary, PREC_FACTOR},
     [TOKEN_BANG]          = {unary,    NULL,   PREC_NONE},
+    [TOKEN_TILDE]         = {unary,    NULL,   PREC_NONE},
     [TOKEN_BANG_EQUAL]    = {NULL,     binary, PREC_EQUALITY},
     [TOKEN_EQUAL]         = {NULL,     NULL,   PREC_NONE},
     [TOKEN_EQUAL_EQUAL]   = {NULL,     binary, PREC_EQUALITY},
@@ -883,9 +888,14 @@ ParseRule rules[] = {
     [TOKEN_GREATER_EQUAL] = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_LESS]          = {NULL,     binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL]    = {NULL,     binary, PREC_COMPARISON},
+    [TOKEN_LSHIFT]        = {NULL,     binary, PREC_SHIFT},
+    [TOKEN_RSHIFT]        = {NULL,     binary, PREC_SHIFT},
     [TOKEN_ARROW]         = {NULL,     NULL,   PREC_NONE},
     [TOKEN_FAT_ARROW]     = {NULL,     NULL,   PREC_NONE},
     [TOKEN_DOT_DOT]       = {NULL,     binary, PREC_RANGE},
+    [TOKEN_PIPE]          = {NULL,     binary, PREC_BITWISE_OR},
+    [TOKEN_CARET]         = {NULL,     binary, PREC_BITWISE_XOR},
+    [TOKEN_AMPERSAND]     = {NULL,     binary, PREC_BITWISE_AND},
     [TOKEN_AND]           = {NULL,     andExpr, PREC_AND},
     [TOKEN_OR]            = {NULL,     orExpr, PREC_OR},
     [TOKEN_QUESTION]      = {NULL,     NULL,   PREC_NONE},

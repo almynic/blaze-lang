@@ -110,6 +110,18 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_MODULO_INT", offset);
         case OP_NEGATE_INT:
             return simpleInstruction("OP_NEGATE_INT", offset);
+        case OP_BITWISE_NOT_INT:
+            return simpleInstruction("OP_BITWISE_NOT_INT", offset);
+        case OP_BITWISE_AND_INT:
+            return simpleInstruction("OP_BITWISE_AND_INT", offset);
+        case OP_BITWISE_OR_INT:
+            return simpleInstruction("OP_BITWISE_OR_INT", offset);
+        case OP_BITWISE_XOR_INT:
+            return simpleInstruction("OP_BITWISE_XOR_INT", offset);
+        case OP_SHIFT_LEFT_INT:
+            return simpleInstruction("OP_SHIFT_LEFT_INT", offset);
+        case OP_SHIFT_RIGHT_INT:
+            return simpleInstruction("OP_SHIFT_RIGHT_INT", offset);
         case OP_ADD_FLOAT:
             return simpleInstruction("OP_ADD_FLOAT", offset);
         case OP_SUBTRACT_FLOAT:

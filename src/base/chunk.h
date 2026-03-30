@@ -47,6 +47,14 @@ typedef enum {
     OP_MODULO_INT,
     OP_NEGATE_INT,
 
+    // Bitwise operations (integers)
+    OP_BITWISE_NOT_INT,
+    OP_BITWISE_AND_INT,
+    OP_BITWISE_OR_INT,
+    OP_BITWISE_XOR_INT,
+    OP_SHIFT_LEFT_INT,
+    OP_SHIFT_RIGHT_INT,
+
     // Arithmetic (floats)
     OP_ADD_FLOAT,
     OP_SUBTRACT_FLOAT,

@@ -23,6 +23,9 @@ typedef enum {
     TOKEN_STAR,             // *
     TOKEN_SLASH,            // /
     TOKEN_PERCENT,          // %
+    TOKEN_AMPERSAND,        // & (bitwise and)
+    TOKEN_CARET,            // ^ (bitwise xor)
+    TOKEN_TILDE,            // ~ (bitwise not)
 
     // One or two character tokens
     TOKEN_BANG,             // !
@@ -33,6 +36,7 @@ typedef enum {
     TOKEN_GREATER_EQUAL,    // >=
     TOKEN_LESS,             // <
     TOKEN_LESS_EQUAL,       // <=
+    TOKEN_LSHIFT,           // << (shift left)
     TOKEN_ARROW,            // ->
     TOKEN_FAT_ARROW,        // =>
     TOKEN_DOT_DOT,          // ..
@@ -40,6 +44,7 @@ typedef enum {
     TOKEN_AND,              // &&
     TOKEN_OR,               // ||
     TOKEN_PIPE,             // |
+    TOKEN_RSHIFT,           // >> (shift right)
     TOKEN_QUESTION,         // ?
     TOKEN_QUESTION_DOT,     // ?.
     TOKEN_QUESTION_QUESTION, // ??
