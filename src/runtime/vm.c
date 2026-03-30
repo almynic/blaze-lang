@@ -19,6 +19,8 @@
 static ModuleSystem moduleSystem;
 static bool moduleSystemInitialized = false;
 static bool preludeLoaded = false;
+static ObjClass* hashMapClass = NULL;
+static ObjClass* hashSetClass = NULL;
 
 // ============================================================================
 // Stack Operations
@@ -83,6 +85,80 @@ static void defineNative(VM* vm, const char* name, NativeFn function, int arity)
     tableSet(&vm->globals, AS_STRING(vm->stack[0]), vm->stack[1]);
     pop(vm);
     pop(vm);
+}
+
+// Encode supported hash key types into stable string keys for Table.
+// Supported: string, int, float, bool, nil.
+static bool encodeHashKey(Value key, ObjString** outKey) {
+    if (IS_STRING(key)) {
+        ObjString* s = AS_STRING(key);
+        int total = s->length + 2;  // "s:" + payload
+        char* chars = ALLOCATE(char, total + 1);
+        chars[0] = 's';
+        chars[1] = ':';
+        memcpy(chars + 2, s->chars, s->length);
+        chars[total] = '\0';
+        *outKey = takeString(chars, total);
+        return true;
+    }
+    if (IS_INT(key)) {
+        char buffer[96];
+        int len = snprintf(buffer, sizeof(buffer), "i:%lld", (long long)AS_INT(key));
+        *outKey = copyString(buffer, len);
+        return true;
+    }
+    if (IS_FLOAT(key)) {
+        char buffer[128];
+        int len = snprintf(buffer, sizeof(buffer), "f:%.17g", AS_FLOAT(key));
+        *outKey = copyString(buffer, len);
+        return true;
+    }
+    if (IS_BOOL(key)) {
+        *outKey = copyString(AS_BOOL(key) ? "b:1" : "b:0", 3);
+        return true;
+    }
+    if (IS_NIL(key)) {
+        *outKey = copyString("n:nil", 5);
+        return true;
+    }
+    return false;
+}
+
+static bool decodeHashKey(ObjString* encoded, Value* outValue) {
+    if (encoded->length < 2 || encoded->chars[1] != ':') return false;
+    char tag = encoded->chars[0];
+    const char* payload = encoded->chars + 2;
+    int payloadLen = encoded->length - 2;
+
+    switch (tag) {
+        case 's':
+            *outValue = OBJ_VAL(copyString(payload, payloadLen));
+            return true;
+        case 'i':
+            *outValue = INT_VAL(strtoll(payload, NULL, 10));
+            return true;
+        case 'f':
+            *outValue = FLOAT_VAL(strtod(payload, NULL));
+            return true;
+        case 'b':
+            *outValue = BOOL_VAL(payloadLen > 0 && payload[0] == '1');
+            return true;
+        case 'n':
+            *outValue = NIL_VAL;
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool isHashMapInstance(Value value) {
+    return IS_INSTANCE(value) && hashMapClass != NULL &&
+           AS_INSTANCE(value)->klass == hashMapClass;
+}
+
+static bool isHashSetInstance(Value value) {
+    return IS_INSTANCE(value) && hashSetClass != NULL &&
+           AS_INSTANCE(value)->klass == hashSetClass;
 }
 
 // ============================================================================
@@ -960,6 +1036,163 @@ static Value deleteFileNative(int argCount, Value* args) {
 }
 
 // ============================================================================
+// Hash Map / Hash Set Functions (builtin, Table-backed)
+// ============================================================================
+
+static Value hashMapNative(int argCount, Value* args) {
+    (void)argCount;
+    (void)args;
+    if (hashMapClass == NULL) return NIL_VAL;
+    return OBJ_VAL(newInstance(hashMapClass));
+}
+
+static Value hashSetNative(int argCount, Value* args) {
+    (void)argCount;
+    (void)args;
+    if (hashSetClass == NULL) return NIL_VAL;
+    return OBJ_VAL(newInstance(hashSetClass));
+}
+
+static Value hashMapSetNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return NIL_VAL;
+    ObjString* key = NULL;
+    if (!encodeHashKey(args[1], &key)) return NIL_VAL;
+    tableSet(&AS_INSTANCE(args[0])->fields, key, args[2]);
+    return args[0];
+}
+
+static Value hashMapGetNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return NIL_VAL;
+    ObjString* key = NULL;
+    if (!encodeHashKey(args[1], &key)) return NIL_VAL;
+    Value value;
+    if (tableGet(&AS_INSTANCE(args[0])->fields, key, &value)) {
+        return value;
+    }
+    return NIL_VAL;
+}
+
+static Value hashMapHasNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return BOOL_VAL(false);
+    ObjString* key = NULL;
+    if (!encodeHashKey(args[1], &key)) return BOOL_VAL(false);
+    Value value;
+    return BOOL_VAL(tableGet(&AS_INSTANCE(args[0])->fields, key, &value));
+}
+
+static Value hashMapDeleteNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return BOOL_VAL(false);
+    ObjString* key = NULL;
+    if (!encodeHashKey(args[1], &key)) return BOOL_VAL(false);
+    return BOOL_VAL(tableDelete(&AS_INSTANCE(args[0])->fields, key));
+}
+
+static Value hashMapSizeNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return INT_VAL(0);
+    return INT_VAL(AS_INSTANCE(args[0])->fields.count);
+}
+
+static Value hashMapClearNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return NIL_VAL;
+    Table* table = &AS_INSTANCE(args[0])->fields;
+    freeTable(table);
+    initTable(table);
+    return args[0];
+}
+
+static Value hashMapKeysNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return NIL_VAL;
+    ObjArray* keys = newArray();
+    Table* table = &AS_INSTANCE(args[0])->fields;
+    for (int i = 0; i < table->capacity; i++) {
+        Entry* entry = &table->entries[i];
+        if (entry->key == NULL) continue;
+        Value decoded;
+        if (decodeHashKey(entry->key, &decoded)) {
+            arrayPush(keys, decoded);
+        }
+    }
+    return OBJ_VAL(keys);
+}
+
+static Value hashMapValuesNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashMapInstance(args[0])) return NIL_VAL;
+    ObjArray* values = newArray();
+    Table* table = &AS_INSTANCE(args[0])->fields;
+    for (int i = 0; i < table->capacity; i++) {
+        Entry* entry = &table->entries[i];
+        if (entry->key == NULL) continue;
+        arrayPush(values, entry->value);
+    }
+    return OBJ_VAL(values);
+}
+
+static Value hashSetAddNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashSetInstance(args[0])) return NIL_VAL;
+    ObjString* key = NULL;
+    if (!encodeHashKey(args[1], &key)) return NIL_VAL;
+    tableSet(&AS_INSTANCE(args[0])->fields, key, TRUE_VAL);
+    return args[0];
+}
+
+static Value hashSetHasNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashSetInstance(args[0])) return BOOL_VAL(false);
+    ObjString* key = NULL;
+    if (!encodeHashKey(args[1], &key)) return BOOL_VAL(false);
+    Value value;
+    return BOOL_VAL(tableGet(&AS_INSTANCE(args[0])->fields, key, &value));
+}
+
+static Value hashSetDeleteNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashSetInstance(args[0])) return BOOL_VAL(false);
+    ObjString* key = NULL;
+    if (!encodeHashKey(args[1], &key)) return BOOL_VAL(false);
+    return BOOL_VAL(tableDelete(&AS_INSTANCE(args[0])->fields, key));
+}
+
+static Value hashSetSizeNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashSetInstance(args[0])) return INT_VAL(0);
+    return INT_VAL(AS_INSTANCE(args[0])->fields.count);
+}
+
+static Value hashSetClearNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashSetInstance(args[0])) return NIL_VAL;
+    Table* table = &AS_INSTANCE(args[0])->fields;
+    freeTable(table);
+    initTable(table);
+    return args[0];
+}
+
+static Value hashSetValuesNative(int argCount, Value* args) {
+    (void)argCount;
+    if (!isHashSetInstance(args[0])) return NIL_VAL;
+    ObjArray* values = newArray();
+    Table* table = &AS_INSTANCE(args[0])->fields;
+    for (int i = 0; i < table->capacity; i++) {
+        Entry* entry = &table->entries[i];
+        if (entry->key == NULL) continue;
+        Value decoded;
+        if (decodeHashKey(entry->key, &decoded)) {
+            arrayPush(values, decoded);
+        }
+    }
+    return OBJ_VAL(values);
+}
+
+// ============================================================================
 // VM Lifecycle
 // ============================================================================
 
@@ -972,6 +1205,25 @@ void initVM(VM* vm) {
 
     // Register VM for garbage collection
     setGCVM(vm);
+
+    // Builtin container marker classes (not user-facing language classes).
+    push(vm, OBJ_VAL(copyString("__HashMap", 9)));
+    hashMapClass = newClass(AS_STRING(peek(vm, 0)));
+    push(vm, OBJ_VAL(hashMapClass));
+    push(vm, OBJ_VAL(copyString("__blaze_hash_map_class", 22)));
+    tableSet(&vm->globals, AS_STRING(peek(vm, 0)), peek(vm, 1));
+    pop(vm);
+    pop(vm);
+    pop(vm);
+
+    push(vm, OBJ_VAL(copyString("__HashSet", 9)));
+    hashSetClass = newClass(AS_STRING(peek(vm, 0)));
+    push(vm, OBJ_VAL(hashSetClass));
+    push(vm, OBJ_VAL(copyString("__blaze_hash_set_class", 22)));
+    tableSet(&vm->globals, AS_STRING(peek(vm, 0)), peek(vm, 1));
+    pop(vm);
+    pop(vm);
+    pop(vm);
 
     // Time functions
     defineNative(vm, "clock", clockNative, 0);
@@ -1041,6 +1293,24 @@ void initVM(VM* vm) {
     defineNative(vm, "appendFile", appendFileNative, 2);
     defineNative(vm, "fileExists", fileExistsNative, 1);
     defineNative(vm, "deleteFile", deleteFileNative, 1);
+
+    // Hash map / hash set builtins
+    defineNative(vm, "hashMap", hashMapNative, 0);
+    defineNative(vm, "hashSet", hashSetNative, 0);
+    defineNative(vm, "hashMapSet", hashMapSetNative, 3);
+    defineNative(vm, "hashMapGet", hashMapGetNative, 2);
+    defineNative(vm, "hashMapHas", hashMapHasNative, 2);
+    defineNative(vm, "hashMapDelete", hashMapDeleteNative, 2);
+    defineNative(vm, "hashMapSize", hashMapSizeNative, 1);
+    defineNative(vm, "hashMapClear", hashMapClearNative, 1);
+    defineNative(vm, "hashMapKeys", hashMapKeysNative, 1);
+    defineNative(vm, "hashMapValues", hashMapValuesNative, 1);
+    defineNative(vm, "hashSetAdd", hashSetAddNative, 2);
+    defineNative(vm, "hashSetHas", hashSetHasNative, 2);
+    defineNative(vm, "hashSetDelete", hashSetDeleteNative, 2);
+    defineNative(vm, "hashSetSize", hashSetSizeNative, 1);
+    defineNative(vm, "hashSetClear", hashSetClearNative, 1);
+    defineNative(vm, "hashSetValues", hashSetValuesNative, 1);
 }
 
 void freeVM(VM* vm) {

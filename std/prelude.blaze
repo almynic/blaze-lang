@@ -14,3 +14,10 @@ import { map, filter, reduce, forEach, any, all, find, findIndex } from "std/arr
 // String functions (from std/string)
 import { contains, isEmpty, isBlank, padLeft, padRight, center } from "std/string"
 import { countOccurrences, reverseString, capitalize } from "std/string"
+
+// Collections helpers (from std/collections)
+import { setHas, unique, setUnion, setIntersect, setDiff, flatten, chunk } from "std/collections"
+import { mapHasKey, mapGet, mapSet, mapDelete, mapKeys, mapValues } from "std/collections"
+import { setIsSubset, setEquals, distinctCount, mapSize, mapGetOr, mapClear, frequencies } from "std/collections"
+import { newHashMap, hmSet, hmGet, hmHas, hmDelete, hmSize, hmClear, hmKeys, hmValues, hmGetOr } from "std/collections"
+import { newHashSet, hsAdd, hsHas, hsDelete, hsSize, hsClear, hsValues } from "std/collections"

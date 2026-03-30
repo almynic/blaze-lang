@@ -1,0 +1,94 @@
+let a: [int] = [1, 2, 2, 3]
+let b: [int] = [3, 4]
+
+print(setHas(a, 2))
+print(setHas(a, 9))
+
+let u: [int] = unique(a)
+print(len(u))
+
+let union: [int] = setUnion(a, b)
+print(len(union))
+
+let inter: [int] = setIntersect(a, b)
+print(len(inter))
+
+let diff: [int] = setDiff(a, b)
+print(len(diff))
+
+let groups: [[int]] = chunk([1, 2, 3, 4, 5], 2)
+print(len(groups))
+
+let flat: [int] = flatten(groups)
+print(len(flat))
+
+let keys: [string] = ["a", "b"]
+let values: [int] = [10, 20]
+
+print(mapHasKey(keys, values, "a"))
+print(mapHasKey(keys, values, "z"))
+
+print(mapGet(keys, values, "b") ?? -1)
+print(mapGet(keys, values, "x") ?? -1)
+
+mapSet(keys, values, "b", 99)
+print(mapGet(keys, values, "b") ?? -1)
+
+mapSet(keys, values, "c", 30)
+print(len(keys))
+print(len(values))
+
+print(mapDelete(keys, values, "a"))
+print(mapDelete(keys, values, "missing"))
+print(len(keys))
+print(len(values))
+
+let keyCopy: [string] = mapKeys(keys, values)
+let valueCopy: [int] = mapValues(keys, values)
+print(len(keyCopy))
+print(len(valueCopy))
+
+print(setIsSubset([1, 2], [2, 3, 1]))
+print(setEquals([1, 2, 2], [2, 1]))
+print(distinctCount([1, 1, 2, 3, 3]))
+
+print(mapSize(keys, values))
+print(mapGetOr(keys, values, "b", -1))
+print(mapGetOr(keys, values, "missing", -1))
+
+let fk: [string] = []
+let fc: [int] = []
+frequencies(["a", "b", "a", "c", "a", "b"], fk, fc)
+print(len(fk))
+print(len(fc))
+print(mapGetOr(fk, fc, "a", -1))
+print(mapGetOr(fk, fc, "b", -1))
+print(mapGetOr(fk, fc, "c", -1))
+
+mapClear(keys, values)
+print(len(keys))
+print(len(values))
+
+let hm = newHashMap()
+hmSet(hm, "k1", 7)
+hmSet(hm, "k2", 8)
+print(hmHas(hm, "k1"))
+print(hmGet(hm, "k2"))
+print(hmGetOr(hm, "missing", -1))
+print(hmSize(hm))
+print(hmDelete(hm, "k1"))
+print(hmSize(hm))
+print(len(hmKeys(hm)))
+print(len(hmValues(hm)))
+hmClear(hm)
+print(hmSize(hm))
+
+let hs = newHashSet()
+hsAdd(hs, "u")
+hsAdd(hs, "u")
+hsAdd(hs, "v")
+print(hsHas(hs, "u"))
+print(hsSize(hs))
+print(hsDelete(hs, "u"))
+print(hsSize(hs))
+print(len(hsValues(hs)))

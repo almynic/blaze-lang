@@ -2397,6 +2397,90 @@ void initTypeChecker(TypeChecker* checker) {
         params[0] = createStringType();   // path
         defineNativeFunction(checker, "deleteFile", params, 1, createBoolType());
     }
+
+    // Hash map / hash set builtins
+    defineNativeFunction(checker, "hashMap", NULL, 0, createUnknownType());
+    defineNativeFunction(checker, "hashSet", NULL, 0, createUnknownType());
+
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // map
+        params[1] = createUnknownType();  // key
+        params[2] = createUnknownType();  // value
+        defineNativeFunction(checker, "hashMapSet", params, 3, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // map
+        params[1] = createUnknownType();  // key
+        defineNativeFunction(checker, "hashMapGet", params, 2, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // map
+        params[1] = createUnknownType();  // key
+        defineNativeFunction(checker, "hashMapHas", params, 2, createBoolType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // map
+        params[1] = createUnknownType();  // key
+        defineNativeFunction(checker, "hashMapDelete", params, 2, createBoolType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createUnknownType();  // map
+        defineNativeFunction(checker, "hashMapSize", params, 1, createIntType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createUnknownType();  // map
+        defineNativeFunction(checker, "hashMapClear", params, 1, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createUnknownType();  // map
+        defineNativeFunction(checker, "hashMapKeys", params, 1, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createUnknownType();  // map
+        defineNativeFunction(checker, "hashMapValues", params, 1, createUnknownType());
+    }
+
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // set
+        params[1] = createUnknownType();  // value
+        defineNativeFunction(checker, "hashSetAdd", params, 2, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // set
+        params[1] = createUnknownType();  // value
+        defineNativeFunction(checker, "hashSetHas", params, 2, createBoolType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // set
+        params[1] = createUnknownType();  // value
+        defineNativeFunction(checker, "hashSetDelete", params, 2, createBoolType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createUnknownType();  // set
+        defineNativeFunction(checker, "hashSetSize", params, 1, createIntType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createUnknownType();  // set
+        defineNativeFunction(checker, "hashSetClear", params, 1, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createUnknownType();  // set
+        defineNativeFunction(checker, "hashSetValues", params, 1, createUnknownType());
+    }
 }
 
 void freeTypeChecker(TypeChecker* checker) {

@@ -1,0 +1,302 @@
+// Blaze Standard Library - Collections Helpers
+// This module provides set-style operations using arrays.
+
+fn setHas<T>(items: [T], value: T) -> bool {
+    for item in items {
+        if item == value {
+            return true
+        }
+    }
+    return false
+}
+
+fn unique<T>(items: [T]) -> [T] {
+    let result: [T] = []
+    for item in items {
+        if !setHas(result, item) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+fn setUnion<T>(left: [T], right: [T]) -> [T] {
+    let result: [T] = unique(left)
+    for item in right {
+        if !setHas(result, item) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+fn setIntersect<T>(left: [T], right: [T]) -> [T] {
+    let result: [T] = []
+    for item in unique(left) {
+        if setHas(right, item) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+fn setDiff<T>(left: [T], right: [T]) -> [T] {
+    let result: [T] = []
+    for item in unique(left) {
+        if !setHas(right, item) {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+fn setIsSubset<T>(left: [T], right: [T]) -> bool {
+    for item in unique(left) {
+        if !setHas(right, item) {
+            return false
+        }
+    }
+    return true
+}
+
+fn setEquals<T>(left: [T], right: [T]) -> bool {
+    return setIsSubset(left, right) && setIsSubset(right, left)
+}
+
+fn distinctCount<T>(items: [T]) -> int {
+    return len(unique(items))
+}
+
+fn flatten<T>(groups: [[T]]) -> [T] {
+    let result: [T] = []
+    for group in groups {
+        for item in group {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+fn chunk<T>(items: [T], size: int) -> [[T]] {
+    if size <= 0 {
+        return []
+    }
+
+    let result: [[T]] = []
+    let i: int = 0
+    while i < len(items) {
+        let group: [T] = []
+        let j: int = 0
+        while j < size && (i + j) < len(items) {
+            push(group, items[i + j])
+            j = j + 1
+        }
+        push(result, group)
+        i = i + size
+    }
+    return result
+}
+
+// Map-like helpers built on parallel key/value arrays.
+// Keys and values stay index-aligned: keys[i] maps to values[i].
+
+fn mapHasKey<K, V>(keys: [K], values: [V], key: K) -> bool {
+    let _ = values
+    let i: int = 0
+    while i < len(keys) {
+        if keys[i] == key {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn mapGet<K, V>(keys: [K], values: [V], key: K) -> V? {
+    let i: int = 0
+    while i < len(keys) && i < len(values) {
+        if keys[i] == key {
+            return values[i]
+        }
+        i = i + 1
+    }
+    return nil
+}
+
+fn mapSet<K, V>(keys: [K], values: [V], key: K, value: V) -> nil {
+    let i: int = 0
+    while i < len(keys) && i < len(values) {
+        if keys[i] == key {
+            values[i] = value
+            return nil
+        }
+        i = i + 1
+    }
+    push(keys, key)
+    push(values, value)
+}
+
+fn mapDelete<K, V>(keys: [K], values: [V], key: K) -> bool {
+    let i: int = 0
+    while i < len(keys) && i < len(values) {
+        if keys[i] == key {
+            let j: int = i
+            while j + 1 < len(keys) && j + 1 < len(values) {
+                keys[j] = keys[j + 1]
+                values[j] = values[j + 1]
+                j = j + 1
+            }
+            pop(keys)
+            pop(values)
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn mapKeys<K, V>(keys: [K], values: [V]) -> [K] {
+    let _ = values
+    let result: [K] = []
+    for k in keys {
+        push(result, k)
+    }
+    return result
+}
+
+fn mapValues<K, V>(keys: [K], values: [V]) -> [V] {
+    let _ = keys
+    let result: [V] = []
+    for v in values {
+        push(result, v)
+    }
+    return result
+}
+
+fn mapSize<K, V>(keys: [K], values: [V]) -> int {
+    if len(keys) < len(values) {
+        return len(keys)
+    }
+    return len(values)
+}
+
+fn mapGetOr<K, V>(keys: [K], values: [V], key: K, fallback: V) -> V {
+    let found: V? = mapGet(keys, values, key)
+    if found != nil {
+        return found ?? fallback
+    }
+    return fallback
+}
+
+fn mapClear<K, V>(keys: [K], values: [V]) -> nil {
+    while len(keys) > 0 {
+        pop(keys)
+    }
+    while len(values) > 0 {
+        pop(values)
+    }
+}
+
+// Build frequency table into parallel arrays.
+// On return: keys[i] has count counts[i].
+fn frequencies<T>(items: [T], keys: [T], counts: [int]) -> nil {
+    while len(keys) > 0 {
+        pop(keys)
+    }
+    while len(counts) > 0 {
+        pop(counts)
+    }
+    for item in items {
+        let i: int = 0
+        let found: bool = false
+        while i < len(keys) && i < len(counts) {
+            if keys[i] == item {
+                counts[i] = counts[i] + 1
+                found = true
+                i = len(keys)
+            } else {
+                i = i + 1
+            }
+        }
+        if !found {
+            push(keys, item)
+            push(counts, 1)
+        }
+    }
+}
+
+// ============================================================================
+// Builtin Hash Map / Hash Set wrappers
+// ============================================================================
+
+fn newHashMap() {
+    return hashMap()
+}
+
+fn hmSet<M, K, V>(map: M, key: K, value: V) -> nil {
+    let _ = hashMapSet(map, key, value)
+}
+
+fn hmGet<M, K, V>(map: M, key: K) -> V? {
+    return hashMapGet(map, key)
+}
+
+fn hmHas<M, K>(map: M, key: K) -> bool {
+    return hashMapHas(map, key)
+}
+
+fn hmDelete<M, K>(map: M, key: K) -> bool {
+    return hashMapDelete(map, key)
+}
+
+fn hmSize<M>(map: M) -> int {
+    return hashMapSize(map)
+}
+
+fn hmClear<M>(map: M) -> nil {
+    let _ = hashMapClear(map)
+}
+
+fn hmKeys<M, K>(map: M) -> [K] {
+    return hashMapKeys(map)
+}
+
+fn hmValues<M, V>(map: M) -> [V] {
+    return hashMapValues(map)
+}
+
+fn hmGetOr<M, K, V>(map: M, key: K, fallback: V) -> V {
+    let value: V? = hashMapGet(map, key)
+    if value != nil {
+        return value
+    }
+    return fallback
+}
+
+fn newHashSet() {
+    return hashSet()
+}
+
+fn hsAdd<S, V>(set: S, value: V) -> nil {
+    let _ = hashSetAdd(set, value)
+}
+
+fn hsHas<S, V>(set: S, value: V) -> bool {
+    return hashSetHas(set, value)
+}
+
+fn hsDelete<S, V>(set: S, value: V) -> bool {
+    return hashSetDelete(set, value)
+}
+
+fn hsSize<S>(set: S) -> int {
+    return hashSetSize(set)
+}
+
+fn hsClear<S>(set: S) -> nil {
+    let _ = hashSetClear(set)
+}
+
+fn hsValues<S, V>(set: S) -> [V] {
+    return hashSetValues(set)
+}
