@@ -572,7 +572,7 @@ blaze-lang/
 │   ├── math.blaze          # Math functions
 │   ├── string.blaze        # String utilities
 │   └── array.blaze         # Array utilities
-├── tests/                  # Test files
+├── tests/                  # Regression fixtures (by area: bitwise/, class/, core/, …)
 ├── examples/               # Example programs
 ├── CMakeLists.txt          # Build configuration
 ├── CHANGELOG.md            # Version history

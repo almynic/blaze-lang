@@ -1,9 +1,0 @@
-// Phase 7: variance keywords and generic superclass (type checker + parser)
-
-class Box<out T> {}
-class Sink<in T> {}
-
-class Base<T> {}
-class Child<T> extends Base<T> {}
-
-print("phase7 declarations ok")

@@ -346,8 +346,8 @@ Run the test suite:
 ./build/blaze examples/comprehensive_test.blaze
 
 # Individual feature tests
-./build/blaze tests/spread_operator.blaze
-./build/blaze tests/optional_types.blaze
+./build/blaze tests/spread/spread_operator.blaze
+./build/blaze tests/optional/optional_types.blaze
 ```
 
 The `--test` runner repeatedly compiles and executes snippets in a fresh VM; use it after VM or compiler changes to catch integration issues early.

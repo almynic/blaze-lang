@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Depth limits**: `substituteTypeInType` and `typesEqual` use a shared recursion cap (`BLAZE_TYPE_RECURSION_MAX`) to avoid stack overflow on deeply nested generic types (`src/types.c`).
 - **Generic superclass validation**: For classes with type parameters, resolved `extends` types must reference only those parameters (or non-parameter types); invalid references are rejected (`src/typechecker.c`).
 - **Enum `match` pattern typing**: `match` arms treat variant constructor patterns (`Some(x)`, or `Some` followed by `(x, …)`) as binding `x` to real field types from the variant’s function type instead of `unknown` (`src/typechecker.c`).
-- **Scanner / AST / parser**: `TOKEN_OUT`; `ClassStmt.typeParamVariances`; `attachGenericTemplateVariances()`; `tests/phase7_features.blaze`.
+- **Scanner / AST / parser**: `TOKEN_OUT`; `ClassStmt.typeParamVariances`; `attachGenericTemplateVariances()`; `tests/class/class_generic_variance_features.blaze`.
 
 #### Changed
 - **Earlier Unreleased note**: The items previously listed as “still out of scope” for Phase 7 (variance, recursive nominal edge cases, generic-only superclass shapes) are now implemented; see ROADMAP Phase 7.
@@ -50,7 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Type checker**: Template registration; per-instantiation method body checking with `this` as the instance type; explicit `Callee<type>(...)` constructor calls for generic classes.
 - **Lowering** (`src/generic.c`): Each distinct instantiation becomes a concrete `ClassStmt` with a mangled global name (e.g. `Box__int`); bytecode compiles these before the main script via `compileWithPrependedClasses`.
 - **Parser**: Speculative generic-call parse with `speculativeDepth` so comparisons like `x < lo` are not mistaken for `foo<T>(...)`.
-- Tests: `tests/generic_class_minimal.blaze`, `tests/generic_class_nested.blaze`.
+- Tests: `tests/generics/generic_class_minimal.blaze`, `tests/generics/generic_class_nested.blaze`.
 
 ### March 30, 2026 - Generic Functions and Lambda Enhancements
 **NEW FEATURE**: Generic function type parameters, explicit generic call syntax, typed lambdas, and block-body lambdas.
@@ -62,7 +62,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Typed lambdas**: `(x: int) => expr`, `(x: int) -> int => expr` with optional return type before `=>`.
 - **Block lambdas**: `(x: int) => { return expr }` and `(x: int) -> int => { return expr }` — `LambdaExpr` can carry a statement block instead of a single expression.
 - **Type annotations**: `nil` as a type name in annotations (e.g. `fn(T) -> nil`); generic type syntax `Name<Args...>` fixed so the identifier is not conflated with `<`.
-- Tests: `tests/generic_minimal.blaze`, `tests/generic_test.blaze`, `tests/typed_lambda_test.blaze`.
+- Tests: `tests/generics/generic_minimal.blaze`, `tests/generics/generic_test.blaze`, `tests/generics/typed_lambda_test.blaze`.
 
 #### Implementation Notes
 - **Parser**: Speculative lambda parsing with fallback to grouped expressions; `parsePrecedence` handles explicit generic calls after a variable callee.
@@ -289,7 +289,7 @@ fn countdown(n: int) -> int {
 - Debug: Added `OP_TAIL_CALL` disassembly support
 
 #### Testing
-- Created comprehensive test suite in `tests/tail_call_final.blaze`
+- Created comprehensive test suite in `tests/tail_call/tail_call_final.blaze`
 - Tests: single-param, multi-param, deep recursion (5000 frames), GCD, Collatz
 - All tests pass successfully
 - Stress test verifies no stack overflow with 5000+ recursive calls
@@ -320,7 +320,7 @@ fn countdown(n: int) -> int {
 - VM: New `OP_ARRAY_CONCAT` opcode for efficient array concatenation
 
 #### Testing
-- Created comprehensive test suite in `tests/spread_operator.blaze`
+- Created comprehensive test suite in `tests/spread/spread_operator.blaze`
 - All tests pass: basic concatenation, mixed elements, copying, nested arrays, function results
 - Type checking correctly rejects non-array spread operands and type mismatches
 

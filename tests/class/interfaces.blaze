@@ -1,4 +1,4 @@
-// Phase 7: interfaces, implements, generic bounds (simple)
+// Interfaces, implements, generic bounds (simple)
 
 interface HasArea {
     fn area() -> float
