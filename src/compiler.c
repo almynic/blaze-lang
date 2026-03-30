@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "memory.h"
 #include "object.h"
+#include "types.h"
 #include <string.h>
 
 // Current compiler (for nested functions)
@@ -67,6 +68,20 @@ static uint8_t makeConstant(Value value) {
         return 0;
     }
     return (uint8_t)constant;
+}
+
+static void emitGetGlobalForClassType(Type* t, int line) {
+    char buf[512];
+    if (t->kind == TYPE_CLASS) {
+        ObjString* name = copyString(t->as.classType->name, t->as.classType->nameLength);
+        emitBytes(line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(name)));
+    } else if (t->kind == TYPE_GENERIC_INST) {
+        mangleGenericInstType(t, buf, sizeof(buf));
+        ObjString* name = copyString(buf, (int)strlen(buf));
+        emitBytes(line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(name)));
+    } else {
+        compileError(line, "Invalid superclass type for inheritance.");
+    }
 }
 
 static void emitConstant(int line, Value value) {
@@ -653,6 +668,19 @@ static void compileAssign(Expr* expr) {
 static void compileCall(Expr* expr) {
     CallExpr* call = &expr->as.call;
 
+    if (call->explicitTypeArgCount > 0 && call->type != NULL &&
+        call->type->kind == TYPE_GENERIC_INST && call->callee->kind == EXPR_VARIABLE) {
+        char buf[512];
+        mangleGenericInstType(call->type, buf, sizeof(buf));
+        ObjString* name = copyString(buf, (int)strlen(buf));
+        emitBytes(expr->line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(name)));
+        for (int i = 0; i < call->argCount; i++) {
+            compileExpr(call->arguments[i]);
+        }
+        emitBytes(expr->line, OP_CALL, (uint8_t)call->argCount);
+        return;
+    }
+
     // Check if this is a call to print (built-in)
     if (call->callee->kind == EXPR_VARIABLE) {
         VariableExpr* callee = &call->callee->as.variable;
@@ -768,11 +796,14 @@ static void compileExpr(Expr* expr) {
                 addLocal(lambda->params[i], NULL, false);
             }
 
-            // Compile lambda body expression
-            compileExpr(lambda->body);
-
-            // Return the result of the body expression
-            emitByte(expr->line, OP_RETURN);
+            if (lambda->isBlockBody) {
+                // Compile lambda block body; explicit returns are handled by statement compilation.
+                compileStmt(lambda->blockBody);
+            } else {
+                // Compile expression body and return it.
+                compileExpr(lambda->body);
+                emitByte(expr->line, OP_RETURN);
+            }
 
             ObjFunction* function = endCompiler(expr->line);
 
@@ -967,6 +998,8 @@ static void compileMatchExpr(Expr* expr) {
     for (int i = 0; i < match->caseCount; i++) {
         ExprCaseClause* c = &match->cases[i];
 
+        beginScope();
+
         if (c->isWildcard) {
             // Wildcard: pop the value and evaluate the result expression
             emitByte(expr->line, OP_POP);
@@ -975,18 +1008,65 @@ static void compileMatchExpr(Expr* expr) {
         } else {
             // Duplicate the value for comparison
             emitByte(expr->line, OP_DUP);
-            // Compile the pattern
-            compileExpr(c->pattern);
-            // Compare
-            emitByte(expr->line, OP_EQUAL);
+
+            if (c->destructureCount > 0) {
+                // Enum destructuring: Variant(a, b)
+                // 1. Check if the value is an instance of the enum
+                // (Skip for now, just check tag)
+
+                // 2. Get the tag property
+                ObjString* tagStr = copyString("$tag", 4);
+                emitBytes(expr->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+
+                // 3. Compare with pattern (which should be the Variant constructor/tag)
+                // Pattern in Variant(a, b) is Variant, which we bound as a property of Enum class.
+                // But here we need to compare against the tag string.
+                // Wait, if pattern is a variable, it might resolve to the constructor function.
+                // Let's assume for now the pattern evaluates to the Enum variant (which has $tag)
+                compileExpr(c->pattern);
+                emitBytes(expr->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+
+                emitByte(expr->line, OP_EQUAL);
+            } else {
+                // Regular comparison
+                compileExpr(c->pattern);
+                emitByte(expr->line, OP_EQUAL);
+            }
+
             // Jump to next case if not equal
             int nextCase = emitJump(expr->line, OP_JUMP_IF_FALSE);
             // Pop the comparison result (true)
             emitByte(expr->line, OP_POP);
+
+            if (c->destructureCount > 0) {
+                // Destructure: bind fields to locals
+                // Value is still on stack (under the tag if we didn't pop it, but we did)
+                // Wait, OP_DUP was used, then GET_PROPERTY (pops instance, pushes tag).
+                // So tag was on stack. OP_EQUAL popped tag and pattern result.
+                // So now top of stack is the duplicated value? No, OP_DUP was at the very beginning.
+                // Stack: [OriginalValue, DuplicatedValue]
+                // After GET_PROPERTY($tag): [OriginalValue, TagValue]
+                // After compileExpr(pattern): [OriginalValue, TagValue, PatternResult]
+                // If pattern is a variant: [OriginalValue, TagValue, VariantInstance]
+                // Need to get tag from VariantInstance: [OriginalValue, TagValue, VariantTag]
+                // After OP_EQUAL: [OriginalValue, ComparisonResult]
+                // After JUMP_IF_FALSE & POP: [OriginalValue]
+
+                for (int j = 0; j < c->destructureCount; j++) {
+                    emitByte(expr->line, OP_DUP);
+                    char fieldName[16];
+                    snprintf(fieldName, sizeof(fieldName), "$%d", j);
+                    emitBytes(expr->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                    addLocal(c->destructureParams[j], NULL, false);
+                }
+            }
+
             // Pop the duplicated value
             emitByte(expr->line, OP_POP);
+
             // Compile the result expression (leaves value on stack)
             compileExpr(c->value);
+
             // Jump to end
             endJumps[endJumpCount++] = emitJump(expr->line, OP_JUMP);
             // Patch next case jump
@@ -994,6 +1074,8 @@ static void compileMatchExpr(Expr* expr) {
             // Pop the comparison result (false)
             emitByte(expr->line, OP_POP);
         }
+
+        endScope(expr->line);
     }
 
     // If no wildcard and no match, pop the value and push nil
@@ -1027,6 +1109,61 @@ static void compilePrintStmt(Stmt* stmt) {
 static void compileVarStmt(Stmt* stmt) {
     VarStmt* var = &stmt->as.var;
 
+    // Handle array destructuring
+    if (var->destructureKind == DESTRUCTURE_ARRAY) {
+        // For each variable in the destructuring pattern
+        for (int i = 0; i < var->destructureCount; i++) {
+            Token name = var->destructureNames[i];
+
+            if (i == var->restIndex) {
+                // Rest parameter: slice from index i to end
+                compileExpr(var->initializer);        // Array on stack
+                emitConstant(stmt->line, INT_VAL(i)); // Start index
+                emitByte(stmt->line, OP_NIL);         // End index (nil = to end)
+                emitByte(stmt->line, OP_ARRAY_SLICE); // Create slice
+            } else {
+                // Regular element: recompile initializer and get element at index i
+                compileExpr(var->initializer);  // Array on stack
+                emitConstant(stmt->line, INT_VAL(i)); // Push index
+                emitByte(stmt->line, OP_INDEX_GET);     // Get array[i]
+            }
+
+            // Define the variable (local or global)
+            if (current->scopeDepth > 0) {
+                addLocal(name, NULL, var->isConst);
+            } else {
+                ObjString* varName = copyString(name.start, name.length);
+                uint8_t global = makeConstant(OBJ_VAL(varName));
+                emitBytes(stmt->line, OP_DEFINE_GLOBAL, global);
+            }
+        }
+
+        return;
+    } else if (var->destructureKind == DESTRUCTURE_OBJECT) {
+        // Handle object destructuring
+        // For each property in the destructuring pattern
+        for (int i = 0; i < var->destructureCount; i++) {
+            Token name = var->destructureNames[i];
+
+            // Get property from object
+            compileExpr(var->initializer);  // Object on stack
+            ObjString* propName = copyString(name.start, name.length);
+            emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(propName)));
+
+            // Define the variable (local or global)
+            if (current->scopeDepth > 0) {
+                addLocal(name, NULL, var->isConst);
+            } else {
+                ObjString* varName = copyString(name.start, name.length);
+                uint8_t global = makeConstant(OBJ_VAL(varName));
+                emitBytes(stmt->line, OP_DEFINE_GLOBAL, global);
+            }
+        }
+
+        return;
+    }
+
+    // Simple variable declaration
     if (var->initializer != NULL) {
         compileExpr(var->initializer);
     } else {
@@ -1103,8 +1240,79 @@ static void compileWhileStmt(Stmt* stmt) {
     emitByte(stmt->line, OP_POP);
 }
 
+static bool isUnrollableRange(Expr* iterable, int64_t* start, int64_t* end) {
+    if (iterable->kind != EXPR_BINARY) return false;
+    BinaryExpr* binary = &iterable->as.binary;
+    if (binary->op.type != TOKEN_DOT_DOT) return false;
+
+    if (binary->left->kind != EXPR_LITERAL || binary->right->kind != EXPR_LITERAL) return false;
+
+    Value leftVal = binary->left->as.literal.value;
+    Value rightVal = binary->right->as.literal.value;
+
+    if (!IS_INT(leftVal) || !IS_INT(rightVal)) return false;
+
+    *start = AS_INT(leftVal);
+    *end = AS_INT(rightVal);
+
+    int64_t diff = (*end > *start) ? (*end - *start) : (*start - *end);
+    return diff >= 0 && diff <= 16;
+}
+
+static bool isUnrollableArray(Expr* iterable) {
+    if (iterable->kind != EXPR_ARRAY) return false;
+    ArrayExpr* array = &iterable->as.array;
+
+    // Only unroll if all elements are simple or we are sure it's worth it.
+    // Fixed size arrays up to 16 elements are good candidates.
+    if (array->elementCount < 0 || array->elementCount > 16) return false;
+
+    // Don't unroll if there are spread operators, as they have dynamic size
+    for (int i = 0; i < array->elementCount; i++) {
+        if (array->elements[i]->kind == EXPR_SPREAD) return false;
+    }
+
+    return true;
+}
+
 static void compileForStmt(Stmt* stmt) {
     ForStmt* forStmt = &stmt->as.for_;
+
+    // Optimization: Loop Unrolling
+    int64_t start, end;
+    if (isUnrollableRange(forStmt->iterable, &start, &end)) {
+        if (start <= end) {
+            for (int64_t i = start; i < end; i++) {
+                beginScope();
+                emitConstant(stmt->line, INT_VAL(i));
+                addLocal(forStmt->variable, createIntType(), false);
+                compileStmt(forStmt->body);
+                endScope(stmt->line);
+            }
+        } else {
+            for (int64_t i = start; i > end; i--) {
+                beginScope();
+                emitConstant(stmt->line, INT_VAL(i));
+                addLocal(forStmt->variable, createIntType(), false);
+                compileStmt(forStmt->body);
+                endScope(stmt->line);
+            }
+        }
+        return;
+    }
+
+    if (isUnrollableArray(forStmt->iterable)) {
+        ArrayExpr* array = &forStmt->iterable->as.array;
+        for (int i = 0; i < array->elementCount; i++) {
+            beginScope();
+            compileExpr(array->elements[i]);
+            // Type will be inferred or checked by the type checker already
+            addLocal(forStmt->variable, NULL, false);
+            compileStmt(forStmt->body);
+            endScope(stmt->line);
+        }
+        return;
+    }
 
     beginScope();
 
@@ -1383,6 +1591,8 @@ static void compileMatchStmt(Stmt* stmt) {
     for (int i = 0; i < matchStmt->caseCount; i++) {
         CaseClause* c = &matchStmt->cases[i];
 
+        beginScope();
+
         if (c->isWildcard) {
             // Wildcard: pop the value and execute body
             emitByte(stmt->line, OP_POP);
@@ -1391,14 +1601,37 @@ static void compileMatchStmt(Stmt* stmt) {
         } else {
             // Duplicate the value for comparison
             emitByte(stmt->line, OP_DUP);
-            // Compile the pattern
-            compileExpr(c->pattern);
-            // Compare
-            emitByte(stmt->line, OP_EQUAL);
+
+            if (c->destructureCount > 0) {
+                // Enum destructuring
+                ObjString* tagStr = copyString("$tag", 4);
+                emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+                compileExpr(c->pattern);
+                emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+                emitByte(stmt->line, OP_EQUAL);
+            } else {
+                // Compile the pattern
+                compileExpr(c->pattern);
+                // Compare
+                emitByte(stmt->line, OP_EQUAL);
+            }
+
             // Jump to next case if not equal
             int nextCase = emitJump(stmt->line, OP_JUMP_IF_FALSE);
             // Pop the comparison result (true)
             emitByte(stmt->line, OP_POP);
+
+            if (c->destructureCount > 0) {
+                // Destructure
+                for (int j = 0; j < c->destructureCount; j++) {
+                    emitByte(stmt->line, OP_DUP);
+                    char fieldName[16];
+                    snprintf(fieldName, sizeof(fieldName), "$%d", j);
+                    emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                    addLocal(c->destructureParams[j], NULL, false);
+                }
+            }
+
             // Pop the duplicated value
             emitByte(stmt->line, OP_POP);
             // Execute the body
@@ -1410,6 +1643,8 @@ static void compileMatchStmt(Stmt* stmt) {
             // Pop the comparison result (false)
             emitByte(stmt->line, OP_POP);
         }
+
+        endScope(stmt->line);
     }
 
     // If no wildcard and no match, pop the value
@@ -1482,8 +1717,118 @@ static void compileThrowStmt(Stmt* stmt) {
     emitByte(stmt->line, OP_THROW);
 }
 
+static void compileEnumStmt(Stmt* stmt) {
+    EnumStmt* enumStmt = &stmt->as.enum_;
+
+    // Create enum name constant
+    ObjString* enumName = copyString(enumStmt->name.start, enumStmt->name.length);
+    uint8_t nameConstant = makeConstant(OBJ_VAL(enumName));
+
+    // We'll treat enums like classes for now
+    emitBytes(stmt->line, OP_CLASS, nameConstant);
+
+    // Define the enum globally (or locally)
+    if (current->scopeDepth > 0) {
+        addLocal(enumStmt->name, enumStmt->type, false);
+    } else {
+        emitBytes(stmt->line, OP_DEFINE_GLOBAL, nameConstant);
+    }
+
+    // Get the enum back on the stack for variant binding
+    if (current->scopeDepth > 0) {
+        int slot = resolveLocal(current, &enumStmt->name);
+        emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)slot);
+    } else {
+        emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+    }
+
+    // Compile variants
+    for (int i = 0; i < enumStmt->variantCount; i++) {
+        EnumVariant* v = &enumStmt->variants[i];
+        ObjString* variantName = copyString(v->name.start, v->name.length);
+        uint8_t variantNameConst = makeConstant(OBJ_VAL(variantName));
+
+        // Duplicate enum class for SET_PROPERTY
+        emitByte(stmt->line, OP_DUP);
+
+        if (v->fieldCount > 0) {
+            // Variant with fields: compile a constructor function
+            Compiler variantCompiler;
+            initCompiler(&variantCompiler, current, FN_TYPE_FUNCTION);
+            beginScope();
+
+            current->function->name = variantName;
+            current->function->arity = v->fieldCount;
+
+            // 1. Get the Enum class (it's at scopeDepth 0 or a local)
+            // Resolve it in the enclosing compiler
+            int enumSlot = resolveLocal(current->enclosing, &enumStmt->name);
+            if (enumSlot != -1) {
+                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)enumSlot);
+            } else {
+                emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+            }
+
+            // 2. Instantiate (OP_CALL with 0 args on the class)
+            emitBytes(stmt->line, OP_CALL, 0);
+
+            // 3. Set variant name property ($tag)
+            emitByte(stmt->line, OP_DUP);
+            ObjString* tagStr = copyString("$tag", 4);
+            emitBytes(stmt->line, OP_CONSTANT, makeConstant(OBJ_VAL(variantName)));
+            emitBytes(stmt->line, OP_SET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+            emitByte(stmt->line, OP_POP); // Pop the name, keep instance
+
+            // 4. Set fields ($0, $1, ...)
+            for (int j = 0; j < v->fieldCount; j++) {
+                emitByte(stmt->line, OP_DUP);
+                // Get parameter j
+                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)j);
+                // Field name is its index: $0, $1, etc.
+                char fieldName[16];
+                snprintf(fieldName, sizeof(fieldName), "$%d", j);
+                emitBytes(stmt->line, OP_SET_PROPERTY, makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                emitByte(stmt->line, OP_POP);
+            }
+
+            // 5. Return instance
+            emitByte(stmt->line, OP_RETURN);
+
+            ObjFunction* function = endCompiler(stmt->line);
+            emitBytes(stmt->line, OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+        } else {
+            // Variant without fields: just a pre-instantiated instance
+            // 1. Duplicate enum class to call it
+            emitByte(stmt->line, OP_DUP);
+            // 2. Instantiate
+            emitBytes(stmt->line, OP_CALL, 0);
+            // 3. Set tag
+            emitByte(stmt->line, OP_DUP);
+            ObjString* tagStr = copyString("$tag", 4);
+            emitBytes(stmt->line, OP_CONSTANT, makeConstant(OBJ_VAL(variantName)));
+            emitBytes(stmt->line, OP_SET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+            emitByte(stmt->line, OP_POP);
+        }
+
+        // 6. Bind constructor or instance as property of Enum class
+        emitBytes(stmt->line, OP_SET_PROPERTY, variantNameConst);
+        emitByte(stmt->line, OP_POP); // Pop the result of SET_PROPERTY
+    }
+
+    emitByte(stmt->line, OP_POP); // Pop the enum class
+}
+
+static void compileInterfaceStmt(Stmt* stmt) {
+    (void)stmt;
+    // Interfaces are compile-time only; no bytecode.
+}
+
 static void compileClassStmt(Stmt* stmt) {
     ClassStmt* classStmt = &stmt->as.class_;
+
+    if (classStmt->typeParamCount > 0) {
+        return;
+    }
 
     // Create class name constant
     ObjString* className = copyString(classStmt->name.start, classStmt->name.length);
@@ -1503,20 +1848,26 @@ static void compileClassStmt(Stmt* stmt) {
     // Set up class compiler context for 'this'
     ClassCompiler classCompiler;
     classCompiler.enclosing = currentClass;
-    classCompiler.hasSuperclass = classStmt->hasSuperclass;
+    classCompiler.hasSuperclass = classStmt->superclassType != NULL;
     currentClass = &classCompiler;
 
-    // Handle inheritance
-    if (classStmt->hasSuperclass) {
-        // Load superclass
-        int arg = resolveLocal(current, &classStmt->superclass);
-        if (arg != -1) {
-            emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)arg);
-        } else if ((arg = resolveUpvalue(current, &classStmt->superclass)) != -1) {
-            emitBytes(stmt->line, OP_GET_UPVALUE, (uint8_t)arg);
+    // Handle inheritance (superclass may be a script local from a prior `class` stmt)
+    if (classStmt->superclassType != NULL) {
+        if (classStmt->superclassType->kind == TYPE_NODE_SIMPLE) {
+            Token nm = classStmt->superclassType->as.simple.name;
+            int arg = resolveLocal(current, &nm);
+            if (arg != -1) {
+                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)arg);
+            } else if ((arg = resolveUpvalue(current, &nm)) != -1) {
+                emitBytes(stmt->line, OP_GET_UPVALUE, (uint8_t)arg);
+            } else {
+                ObjString* superStr = copyString(nm.start, nm.length);
+                emitBytes(stmt->line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(superStr)));
+            }
+        } else if (classStmt->superclassResolved != NULL) {
+            emitGetGlobalForClassType(classStmt->superclassResolved, stmt->line);
         } else {
-            ObjString* superName = copyString(classStmt->superclass.start, classStmt->superclass.length);
-            emitBytes(stmt->line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(superName)));
+            compileError(stmt->line, "Could not resolve superclass for inheritance.");
         }
 
         // Get the class back on the stack
@@ -1562,7 +1913,7 @@ static void compileClassStmt(Stmt* stmt) {
     emitByte(stmt->line, OP_POP);
 
     // Close super scope if we had a superclass
-    if (classStmt->hasSuperclass) {
+    if (classStmt->superclassType != NULL) {
         endScope(stmt->line);
     }
 
@@ -1603,6 +1954,12 @@ static bool compileStmt(Stmt* stmt) {
         case STMT_CLASS:
             compileClassStmt(stmt);
             return false;
+        case STMT_INTERFACE:
+            compileInterfaceStmt(stmt);
+            return false;
+        case STMT_ENUM:
+            compileEnumStmt(stmt);
+            return false;
         case STMT_MATCH:
             compileMatchStmt(stmt);
             return false;
@@ -1615,6 +1972,8 @@ static bool compileStmt(Stmt* stmt) {
         case STMT_IMPORT:
             // TODO: Module imports are processed before compilation
             // For now, this is a no-op as modules are loaded at the VM level
+            return false;
+        case STMT_TYPE_ALIAS:
             return false;
     }
 
@@ -1652,18 +2011,24 @@ void initCompiler(Compiler* compiler, Compiler* enclosing, CompilerFnType type) 
     }
 }
 
-ObjFunction* compile(Stmt** statements, int count) {
+static ObjFunction* compileImpl(Stmt** prepend, int prependCount,
+                                Stmt** statements, int count, bool replMode) {
     Compiler compiler;
     initCompiler(&compiler, NULL, FN_TYPE_SCRIPT);
     hadError = false;
 
-    // Start at scope depth 1 so top-level variables are locals
-    beginScope();
+    // Emit monomorphized classes at scope depth 0 so they become true globals.
+    for (int i = 0; i < prependCount; i++) {
+        compileClassStmt(prepend[i]);
+    }
+
+    if (!replMode) {
+        beginScope();
+    }
 
     for (int i = 0; i < count; i++) {
         bool isTerminator = compileStmt(statements[i]);
 
-        // Dead code elimination at top level
         if (isTerminator && i + 1 < count) {
             Stmt* nextStmt = statements[i + 1];
             if (nextStmt != NULL) {
@@ -1675,33 +2040,23 @@ ObjFunction* compile(Stmt** statements, int count) {
     }
 
     ObjFunction* function = endCompiler(0);
-
     return hadError ? NULL : function;
 }
 
+ObjFunction* compile(Stmt** statements, int count) {
+    return compileImpl(NULL, 0, statements, count, false);
+}
+
+ObjFunction* compileWithPrependedClasses(Stmt** prepend, int prependCount,
+                                         Stmt** statements, int count) {
+    return compileImpl(prepend, prependCount, statements, count, false);
+}
+
 ObjFunction* compileRepl(Stmt** statements, int count) {
-    Compiler compiler;
-    initCompiler(&compiler, NULL, FN_TYPE_SCRIPT);
-    hadError = false;
+    return compileImpl(NULL, 0, statements, count, true);
+}
 
-    // REPL mode: Don't call beginScope() so top-level variables are globals
-    // This allows them to persist between REPL inputs
-
-    for (int i = 0; i < count; i++) {
-        bool isTerminator = compileStmt(statements[i]);
-
-        // Dead code elimination in REPL
-        if (isTerminator && i + 1 < count) {
-            Stmt* nextStmt = statements[i + 1];
-            if (nextStmt != NULL) {
-                fprintf(stderr, "Warning [line %d]: Unreachable code after return/throw.\n",
-                        nextStmt->line);
-            }
-            break;
-        }
-    }
-
-    ObjFunction* function = endCompiler(0);
-
-    return hadError ? NULL : function;
+ObjFunction* compileReplWithPrependedClasses(Stmt** prepend, int prependCount,
+                                             Stmt** statements, int count) {
+    return compileImpl(prepend, prependCount, statements, count, true);
 }

@@ -9,6 +9,8 @@
 #include "parser.h"
 #include "typechecker.h"
 #include "compiler.h"
+#include "generic.h"
+#include "ast.h"
 
 // ============================================================================
 // Module System Initialization
@@ -244,15 +246,32 @@ Module* loadModule(ModuleSystem* system, const char* importPath) {
         return NULL;
     }
 
+    Stmt** lowered = NULL;
+    int loweredCount = 0;
+    if (!lowerGenericClasses(&checker, &lowered, &loweredCount)) {
+        fprintf(stderr, "Generic lowering error in module: %s\n", resolvedPath);
+        freeTypeChecker(&checker);
+        freeStatements(statements, count);
+        free(source);
+        module->state = MODULE_UNLOADED;
+        return NULL;
+    }
     freeTypeChecker(&checker);
 
     // Compile the module
-    ObjFunction* function = compile(statements, count);
+    ObjFunction* function = compileWithPrependedClasses(lowered, loweredCount, statements, count);
 
     if (function == NULL) {
         fprintf(stderr, "Compile error in module: %s\n", resolvedPath);
         free(source);
         module->state = MODULE_UNLOADED;
+        if (lowered != NULL) {
+            for (int i = 0; i < loweredCount; i++) {
+                freeLoweredMonomorphClassStmt(lowered[i]);
+            }
+            FREE_ARRAY(Stmt*, lowered, loweredCount);
+        }
+        freeStatements(statements, count);
         return NULL;
     }
 
@@ -260,6 +279,12 @@ Module* loadModule(ModuleSystem* system, const char* importPath) {
     module->state = MODULE_LOADED;
 
     // Clean up
+    if (lowered != NULL) {
+        for (int i = 0; i < loweredCount; i++) {
+            freeLoweredMonomorphClassStmt(lowered[i]);
+        }
+        FREE_ARRAY(Stmt*, lowered, loweredCount);
+    }
     freeStatements(statements, count);
     free(source);
 

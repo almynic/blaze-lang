@@ -197,6 +197,10 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_ARRAY_LENGTH", offset);
         case OP_RANGE:
             return simpleInstruction("OP_RANGE", offset);
+        case OP_ARRAY_CONCAT:
+            return simpleInstruction("OP_ARRAY_CONCAT", offset);
+        case OP_ARRAY_SLICE:
+            return simpleInstruction("OP_ARRAY_SLICE", offset);
         case OP_PRINT:
             return simpleInstruction("OP_PRINT", offset);
         case OP_TRY:

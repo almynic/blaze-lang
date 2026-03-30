@@ -21,6 +21,7 @@ set(BLAZE_SOURCES
     src/ast.c
     src/parser.c
     src/typechecker.c
+    src/generic.c
     src/compiler.c
     src/vm.c
     src/object.c
@@ -40,6 +41,7 @@ set(BLAZE_HEADERS
     src/ast.h
     src/parser.h
     src/typechecker.h
+    src/generic.h
     src/compiler.h
     src/vm.h
     src/object.h

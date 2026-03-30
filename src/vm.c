@@ -6,6 +6,7 @@
 #include "memory.h"
 #include "object.h"
 #include "module.h"
+#include "generic.h"
 #include <stdarg.h>
 #include <time.h>
 #include <math.h>
@@ -2247,6 +2248,59 @@ static InterpretResult executeWithFrames(VM* vm) {
                 break;
             }
 
+            case OP_ARRAY_SLICE: {
+                // Stack: [array, startIndex, endIndex]
+                // endIndex can be nil (meaning "to end")
+                Value endVal = pop(vm);
+                Value startVal = pop(vm);
+                Value arrayVal = pop(vm);
+
+                if (!IS_ARRAY(arrayVal)) {
+                    runtimeError(vm, "Can only slice arrays.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!IS_INT(startVal)) {
+                    runtimeError(vm, "Slice start index must be an integer.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjArray* array = AS_ARRAY(arrayVal);
+                int start = AS_INT(startVal);
+
+                // Handle negative start index
+                if (start < 0) {
+                    start = array->count + start;
+                }
+                if (start < 0) start = 0;
+                if (start > array->count) start = array->count;
+
+                int end;
+                if (IS_NIL(endVal)) {
+                    // nil means "to end"
+                    end = array->count;
+                } else if (IS_INT(endVal)) {
+                    end = AS_INT(endVal);
+                    // Handle negative end index
+                    if (end < 0) {
+                        end = array->count + end;
+                    }
+                    if (end < 0) end = 0;
+                    if (end > array->count) end = array->count;
+                } else {
+                    runtimeError(vm, "Slice end index must be an integer or nil.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                // Create sliced array
+                ObjArray* result = newArray();
+                for (int i = start; i < end; i++) {
+                    arrayPush(result, array->elements[i]);
+                }
+                push(vm, OBJ_VAL(result));
+                break;
+            }
+
             case OP_TRY: {
                 // Read catch offset
                 uint16_t catchOffset = (uint16_t)(frame->ip[0] << 8);
@@ -2558,25 +2612,57 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
     }
 
     bool typeOk = typeCheck(&checker, statements, stmtCount);
+
+    Stmt** lowered = NULL;
+    int loweredCount = 0;
+    if (!lowerGenericClasses(&checker, &lowered, &loweredCount)) {
+        freeTypeChecker(&checker);
+        freeStatements(statements, stmtCount);
+        return INTERPRET_COMPILE_ERROR;
+    }
     freeTypeChecker(&checker);
 
     if (!typeOk) {
+        if (lowered != NULL) {
+            for (int i = 0; i < loweredCount; i++) {
+                freeLoweredMonomorphClassStmt(lowered[i]);
+            }
+            FREE_ARRAY(Stmt*, lowered, loweredCount);
+        }
         freeStatements(statements, stmtCount);
         return INTERPRET_COMPILE_ERROR;
     }
 
     // Compile - use compileRepl for REPL mode so globals persist
     ObjFunction* function = replMode
-        ? compileRepl(statements, stmtCount)
-        : compile(statements, stmtCount);
-    freeStatements(statements, stmtCount);
+        ? compileReplWithPrependedClasses(lowered, loweredCount, statements, stmtCount)
+        : compileWithPrependedClasses(lowered, loweredCount, statements, stmtCount);
 
     if (function == NULL) {
+        if (lowered != NULL) {
+            for (int i = 0; i < loweredCount; i++) {
+                freeLoweredMonomorphClassStmt(lowered[i]);
+            }
+            FREE_ARRAY(Stmt*, lowered, loweredCount);
+        }
+        freeStatements(statements, stmtCount);
         return INTERPRET_COMPILE_ERROR;
     }
 
-    // Set up execution with call frame
+    // Root the compiled function before freeing the AST: GC may run during
+    // freeStatements, and after compile ends the compiler no longer marks this
+    // function (current is NULL), so it would otherwise be collected.
     push(vm, OBJ_VAL(function));
+
+    if (lowered != NULL) {
+        for (int i = 0; i < loweredCount; i++) {
+            freeLoweredMonomorphClassStmt(lowered[i]);
+        }
+        FREE_ARRAY(Stmt*, lowered, loweredCount);
+    }
+    freeStatements(statements, stmtCount);
+
+    // Set up execution with call frame
     ObjClosure* closure = newClosure(function);
     pop(vm);
     push(vm, OBJ_VAL(closure));

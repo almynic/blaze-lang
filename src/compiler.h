@@ -50,8 +50,15 @@ void initCompiler(Compiler* compiler, Compiler* enclosing, CompilerFnType type);
 // Returns the compiled function, or NULL on error
 ObjFunction* compile(Stmt** statements, int count);
 
+// Emit lowered generic classes first, then the main script (same compiler session).
+ObjFunction* compileWithPrependedClasses(Stmt** prepend, int prependCount,
+                                         Stmt** statements, int count);
+
 // Compile for REPL (top-level variables are globals for persistence)
 ObjFunction* compileRepl(Stmt** statements, int count);
+
+ObjFunction* compileReplWithPrependedClasses(Stmt** prepend, int prependCount,
+                                             Stmt** statements, int count);
 
 // Mark compiler roots for GC
 void markCompilerRoots(void);

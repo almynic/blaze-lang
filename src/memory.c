@@ -8,11 +8,13 @@ void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
         return NULL;
     }
 
-    void* result = realloc(pointer, newSize);
-    if (result == NULL) {
+    // Hold realloc's result in a temporary: on failure it returns NULL but the
+    // original block is still valid; we must not lose `pointer` before we know.
+    void* newPointer = realloc(pointer, newSize);
+    if (newPointer == NULL) {
         fprintf(stderr, "Out of memory!\n");
         exit(1);
     }
-    return result;
+    return newPointer;
 }
 

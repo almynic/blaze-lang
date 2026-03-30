@@ -97,6 +97,7 @@ typedef enum {
     OP_ARRAY_LENGTH,    // Get array length
     OP_RANGE,           // Create array from range (start..end)
     OP_ARRAY_CONCAT,    // Concatenate two arrays
+    OP_ARRAY_SLICE,     // Create subarray from start to end (or nil for end of array)
 
     // Built-in
     OP_PRINT,
