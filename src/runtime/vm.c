@@ -1065,7 +1065,28 @@ static bool call(VM* vm, ObjClosure* closure, int argCount) {
     }
 
     if (vm->frameCount == FRAMES_MAX) {
-        runtimeError(vm, "Stack overflow.");
+        // Smarter hint: suggest tail-recursive style only when this looks like
+        // recursive overflow (same function already active in call stack).
+        bool isRecursiveOverflow = false;
+        for (int i = vm->frameCount - 1; i >= 0; i--) {
+            if (vm->frames[i].closure->function == closure->function) {
+                isRecursiveOverflow = true;
+                break;
+            }
+        }
+
+        if (isRecursiveOverflow) {
+            const char* fnName = closure->function->name != NULL
+                               ? closure->function->name->chars
+                               : "<script>";
+            runtimeError(
+                vm,
+                "Stack overflow in recursive call to '%s'. "
+                "Hint: convert recursion to tail-recursive form to benefit from tail-call optimization.",
+                fnName);
+        } else {
+            runtimeError(vm, "Stack overflow.");
+        }
         return false;
     }
 

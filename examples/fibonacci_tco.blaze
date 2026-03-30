@@ -1,0 +1,9 @@
+fn fibTail(n: int, a: int, b: int) -> int {
+    if n == 0 {
+        return a
+    }
+    return fibTail(n - 1, b, a + b)
+}
+fn fib(n: int) -> int {
+    return fibTail(n, 0, 1)
+}
