@@ -1,3 +1,6 @@
+/* Main interpreter loop: decodes opcodes, dispatches natives, handles
+ * closures/upvalues, classes, try/catch, and module loading via ModuleSystem. */
+
 #include "vm.h"
 #include "debug.h"
 #include "compiler.h"
@@ -2024,6 +2027,8 @@ static InterpretResult executeWithFrames(VM* vm) {
                     break;
                 }
 
+                /* Class as receiver: read enum variant values / class fields from
+                 * klass->fields (e.g. Opt.Some after SET_PROPERTY on the class). */
                 if (IS_CLASS(receiver)) {
                     ObjClass* klass = AS_CLASS(receiver);
                     Value value;

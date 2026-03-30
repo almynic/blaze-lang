@@ -1,6 +1,9 @@
 #ifndef blaze_chunk_h
 #define blaze_chunk_h
 
+/* Chunk: bytecode stream, per-instruction line numbers, constant pool. Each
+ * compiled function or script body owns one Chunk; VM runs it in a CallFrame. */
+
 #include "common.h"
 #include "value.h"
 

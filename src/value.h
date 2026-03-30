@@ -1,6 +1,9 @@
 #ifndef blaze_value_h
 #define blaze_value_h
 
+/* Runtime `Value`: NaN-boxed scalars, bool, and 48-bit object pointers.
+ * Macros IS_*, AS_*, valueToString, etc. are the public surface. */
+
 #include "common.h"
 #include <stdint.h>
 

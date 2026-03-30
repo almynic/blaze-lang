@@ -1,6 +1,9 @@
 #ifndef blaze_typechecker_h
 #define blaze_typechecker_h
 
+/* Static analysis: scoped symbol table, expression/statement typing, generics
+ * instantiation queue, match exhaustiveness where applicable. */
+
 #include "common.h"
 #include "ast.h"
 #include "types.h"

@@ -1,3 +1,5 @@
+/* Pretty-print a Chunk: opcode names, operands, and constant pool indices. */
+
 #include "debug.h"
 #include "value.h"
 

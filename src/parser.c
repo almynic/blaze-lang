@@ -1,3 +1,6 @@
+/* Parser implementation: grammar for declarations, types, expressions,
+ * pattern forms; speculative parsing for generic call lookahead. */
+
 #include "parser.h"
 #include "memory.h"
 #include "object.h"

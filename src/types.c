@@ -1,3 +1,6 @@
+/* Type constructors, copy/substitution, assignability, equality, and display.
+ * Shared by the typechecker and compiler (e.g. return/slot types). */
+
 #include "types.h"
 #include "memory.h"
 #include <stdio.h>

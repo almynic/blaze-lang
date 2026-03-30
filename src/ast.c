@@ -1,3 +1,5 @@
+/* AST node allocation and deep-free helpers (type nodes, exprs, stmts). */
+
 #include "ast.h"
 #include "memory.h"
 

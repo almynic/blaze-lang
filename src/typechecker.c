@@ -1,3 +1,6 @@
+/* Typechecker implementation: walks AST, resolves names, checks calls,
+ * inheritance, generic bounds, and records instantiations for monomorph. */
+
 #include "typechecker.h"
 #include "memory.h"
 #include "colors.h"

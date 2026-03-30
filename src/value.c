@@ -1,3 +1,6 @@
+/* Value representation (NaN-boxed scalars + object pointers) and helpers.
+ * Equality must match language semantics: see valuesEqual for string content. */
+
 #include "value.h"
 #include "memory.h"
 #include "object.h"
@@ -60,6 +63,8 @@ bool valuesEqual(Value a, Value b) {
         return AS_NUMBER(a) == AS_NUMBER(b);
     }
 
+    /* ObjString pointers may differ for the same text (separate copyString
+     * calls); compare by length + bytes so OP_EQUAL matches enum $tag strings. */
     if (IS_STRING(a) && IS_STRING(b)) {
         ObjString* sa = AS_STRING(a);
         ObjString* sb = AS_STRING(b);

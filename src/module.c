@@ -1,3 +1,6 @@
+/* Module loader: read source, run parser + typechecker + compiler, register
+ * cached Module; wires generic lowering where needed. */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

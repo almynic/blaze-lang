@@ -1,3 +1,5 @@
+/* TTY detection for stderr; global toggle for tests or non-interactive runs. */
+
 #include "colors.h"
 #include <unistd.h>
 #include <stdio.h>

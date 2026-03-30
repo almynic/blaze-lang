@@ -1,3 +1,6 @@
+/* Scanner implementation: identifiers, numbers, strings, comments, and
+ * keyword recognition. */
+
 #include "scanner.h"
 
 void initScanner(Scanner* scanner, const char* source) {

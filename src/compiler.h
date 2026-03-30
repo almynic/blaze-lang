@@ -1,6 +1,9 @@
 #ifndef blaze_compiler_h
 #define blaze_compiler_h
 
+/* Single-pass compiler state: locals, upvalues, nested Compiler chain.
+ * `compile` emits bytecode into ObjFunction chunks. */
+
 #include "common.h"
 #include "ast.h"
 #include "chunk.h"

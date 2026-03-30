@@ -1,6 +1,9 @@
 #ifndef blaze_generic_h
 #define blaze_generic_h
 
+/* Generic monomorph pass: after typechecking, emit concrete ClassStmt nodes
+ * per instantiation so the compiler sees ordinary classes. */
+
 #include "ast.h"
 #include "typechecker.h"
 

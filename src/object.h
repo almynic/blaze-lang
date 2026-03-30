@@ -1,6 +1,9 @@
 #ifndef blaze_object_h
 #define blaze_object_h
 
+/* Heap object headers: strings, arrays, functions, closures, classes,
+ * instances, bound methods. All carry Obj header for GC list and mark bit. */
+
 #include "common.h"
 #include "value.h"
 #include "chunk.h"
@@ -107,11 +110,12 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
 // Class and Instance Objects
 // ============================================================================
 
-// Class object
+// Class object: `methods` holds bound methods; `fields` holds class-level data
+// (e.g. enum variant constructors / unit instances) distinct from instances.
 struct ObjClass {
     Obj obj;
     ObjString* name;
-    Table fields;   // Enum variants (and future class-level values); methods stay separate
+    Table fields;
     Table methods;
 };
 

@@ -1,6 +1,9 @@
 #ifndef blaze_parser_h
 #define blaze_parser_h
 
+/* Recursive-descent parser: token stream from Scanner → Stmt/Expr AST.
+ * `parse` returns an owning statement list; errors set hadError / panicMode. */
+
 #include "common.h"
 #include "scanner.h"
 #include "ast.h"

@@ -1,6 +1,9 @@
 #ifndef blaze_debug_h
 #define blaze_debug_h
 
+/* Bytecode disassembler: maps opcodes to readable lines (used with
+ * DEBUG_PRINT_CODE and for debugging the compiler/VM). */
+
 #include "chunk.h"
 
 // Disassemble an entire chunk

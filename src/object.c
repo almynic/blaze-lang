@@ -1,3 +1,6 @@
+/* Object allocation, string interning, table/map support, GC mark/sweep,
+ * and constructors for core runtime types (functions, classes, etc.). */
+
 #include "vm.h"       // Must be first to get full VM definition
 #include "object.h"
 #include "memory.h"

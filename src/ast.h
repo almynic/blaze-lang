@@ -1,6 +1,9 @@
 #ifndef blaze_ast_h
 #define blaze_ast_h
 
+/* Abstract syntax: expression and statement tagged unions, type-annotation
+ * nodes (`TypeNode`), and tags for match/destructuring/generics. */
+
 #include "common.h"
 #include "scanner.h"
 #include "types.h"

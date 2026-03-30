@@ -1,6 +1,9 @@
 #ifndef blaze_common_h
 #define blaze_common_h
 
+/* Shared stdlib includes and VM limits (stack depth, frame count). Optional
+ * DEBUG_* flags enable bytecode dumps, execution tracing, and GC stress tests. */
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

@@ -1,3 +1,7 @@
+/* `reallocate` implementation: used for all dynamic storage; frees when
+ * newSize is 0. GC is not invoked here—allocations that trigger collection
+ * go through object.c. */
+
 #include "memory.h"
 
 void* reallocate(void* pointer, size_t oldSize, size_t newSize) {

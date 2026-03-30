@@ -1,3 +1,6 @@
+/* Chunk storage: growable opcode buffer, line numbers for diagnostics, and
+ * constants table. writeChunk/writeConstant are the usual append helpers. */
+
 #include "chunk.h"
 #include "memory.h"
 

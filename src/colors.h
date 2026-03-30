@@ -1,6 +1,9 @@
 #ifndef blaze_colors_h
 #define blaze_colors_h
 
+/* Terminal ANSI color sequences and helpers; parser/typechecker/errors use
+ * `colorsEnabled()` to avoid escape codes when stderr is not a TTY. */
+
 #include <stdbool.h>
 
 // ANSI color codes

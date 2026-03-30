@@ -1,3 +1,6 @@
+/* AST → bytecode: expressions, control flow, functions/classes, enums, match,
+ * generics (prepended lowered classes). Emits OP_* into Chunk constant pools. */
+
 #include "compiler.h"
 #include "memory.h"
 #include "object.h"
@@ -986,6 +989,10 @@ static void compileExpr(Expr* expr) {
     }
 }
 
+/* Match expression: same control flow as compileMatchStmt (dup, compare tag,
+ * OP_JUMP_IF_FALSE to next arm). Leaves the chosen arm's value on the stack;
+ * non-wildcard arms endScope then OP_JUMP to a common merge; unmatched falls
+ * through to OP_NIL when there is no wildcard. */
 static void compileMatchExpr(Expr* expr) {
     MatchExpr* match = &expr->as.match;
 
@@ -1589,6 +1596,11 @@ static void compileMethod(FunctionStmt* method, int line) {
     }
 }
 
+/* Match statement: subject stays under DUP until an arm matches. After
+ * OP_JUMP_IF_FALSE, only the success path runs beginScope / bindings / body.
+ * endScope must run before the arm's OP_JUMP to exit: otherwise pattern locals
+ * stay on the stack across the jump and corrupt later matches. Failed arms
+ * patch nextCase and POP the false comparison without touching that scope. */
 static void compileMatchStmt(Stmt* stmt) {
     MatchStmt* matchStmt = &stmt->as.match;
 
@@ -1764,7 +1776,8 @@ static void compileThrowStmt(Stmt* stmt) {
     emitByte(stmt->line, OP_THROW);
 }
 
-// Load enum class inside nested function (locals / upvalues / global).
+/* Push the enum's class object: nested variant closures may close over the
+ * enclosing scope, so resolve local / upvalue / global like any other name. */
 static void emitLoadEnumClassRef(EnumStmt* enumStmt, int line) {
     Token* name = &enumStmt->name;
     int loc = resolveLocal(current, name);
@@ -1778,6 +1791,10 @@ static void emitLoadEnumClassRef(EnumStmt* enumStmt, int line) {
     }
 }
 
+/* Emit one ObjClass per enum; variants with payloads become closures that
+ * build instances (SET_PROPERTY $tag, $n, …); unit variants and the class
+ * itself are stored in klass->fields so patterns like `None` and `Some(x)`
+ * resolve at runtime. Each variant name is also defined as a global/local. */
 static void compileEnumStmt(Stmt* stmt) {
     EnumStmt* enumStmt = &stmt->as.enum_;
 

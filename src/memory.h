@@ -1,6 +1,10 @@
 #ifndef blaze_memory_h
 #define blaze_memory_h
 
+/* Heap layer: `reallocate` is the single entry for alloc/free/realloc; macros
+ * GROW_ARRAY / ALLOCATE wrap it. Declares GC mark/collect API (roots + sweep
+ * tie into object.c and the VM). */
+
 #include "common.h"
 
 // Forward declaration for Obj (actual definition in object.h)

@@ -1,6 +1,9 @@
 #ifndef blaze_scanner_h
 #define blaze_scanner_h
 
+/* Lexer: `TokenType` covers operators, keywords, literals; `scanToken` advances
+ * through source and attaches line numbers for diagnostics. */
+
 #include "common.h"
 
 typedef enum {

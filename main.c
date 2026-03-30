@@ -1,3 +1,10 @@
+/*
+ * CLI entry for the Blaze interpreter: initializes compile-time types, then
+ * dispatches to the REPL (no args), embedded regression tests (--test), or
+ * `interpret()` on a source file. REPL uses GNU readline when HAVE_READLINE is
+ * defined; otherwise a small raw-mode line editor with history.
+ */
+
 #include <stdio.h>
 #include <termios.h>
 #include <unistd.h>
@@ -21,6 +28,12 @@
 #include <readline/history.h>
 #endif
 
+// ============================================================================
+// Embedded test harness (`blaze --test`): runProgram prints one snippet;
+// runTests aggregates many language checks (phases printed to stdout).
+// ============================================================================
+
+/* Run one source snippet in a fresh VM; prints label and success/error. */
 static void runProgram(const char* name, const char* source) {
     printf("\n--- %s ---\n", name);
     printf("Source:\n%s\n", source);
@@ -46,6 +59,7 @@ static void runProgram(const char* name, const char* source) {
     freeVM(&vm);
 }
 
+/* Long-form embedded suite: arithmetic through modules, optionals, REPL note. */
 static void runTests(void) {
     printf("Blaze VM Tests:\n");
     printf("===============\n");
@@ -757,6 +771,11 @@ static void runTests(void) {
     printf("Phase 23 tests complete! REPL is ready.\n");
 }
 
+// ============================================================================
+// Script file: read UTF-8 source, run interpret(), map errors to exit codes.
+// ============================================================================
+
+/* Slurp a file into a malloc'd, null-terminated buffer; NULL on error. */
 static char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
@@ -782,6 +801,7 @@ static char* readFile(const char* path) {
     return buffer;
 }
 
+/* Read path, interpret, free; exit 65/70 on compile/runtime failure. */
 static void runFile(const char* path) {
     char* source = readFile(path);
     if (source == NULL) return;
@@ -799,7 +819,9 @@ static void runFile(const char* path) {
 }
 
 // ============================================================================
-// REPL (Read-Eval-Print Loop) with Line Editing
+// REPL: persistent VM across inputs, multi-line brace continuation, dot
+// commands (.help, .exit, .clear, .test). Line input: readline if available,
+// else custom editor (History + LineBuffer + readLineWithEditing below).
 // ============================================================================
 
 #define REPL_LINE_MAX 1024
@@ -1397,6 +1419,8 @@ static void repl(void) {
     printf("Goodbye!\n");
 }
 
+/* Args: none → REPL; `--test`/`-t` → runTests; one path → runFile. Exit 64 on
+ * bad usage, 65 compile error, 70 runtime error (runFile). */
 int main(int argc, char* argv[]) {
     // Initialize type system
     initTypeSystem();

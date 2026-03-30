@@ -1,3 +1,6 @@
+/* Builds synthetic AST for each generic instantiation (type args → TypeNodes,
+ * duplicated method bodies referencing the monomorph name). */
+
 #include "generic.h"
 #include "memory.h"
 #include "types.h"

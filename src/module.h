@@ -1,6 +1,9 @@
 #ifndef blaze_module_h
 #define blaze_module_h
 
+/* Import graph: resolve paths, cache compiled modules, track load state to
+ * catch cycles. Exports live in per-module `Table`s. */
+
 #include "common.h"
 #include "object.h"
 

@@ -1,6 +1,9 @@
 #ifndef blaze_types_h
 #define blaze_types_h
 
+/* Compile-time type system: primitives, functions, classes, generics,
+ * interfaces, unions/optionals, type parameters and variance. */
+
 #include "common.h"
 
 // Static type kinds (compile-time)

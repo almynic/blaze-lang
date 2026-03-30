@@ -1,6 +1,9 @@
 #ifndef blaze_vm_h
 #define blaze_vm_h
 
+/* Virtual machine: call frames, operand stack, globals, string intern table,
+ * exception handlers. `interpret` runs parse → typecheck → compile → execute. */
+
 #include "common.h"
 #include "chunk.h"
 #include "value.h"
