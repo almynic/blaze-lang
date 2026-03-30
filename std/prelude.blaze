@@ -21,3 +21,6 @@ import { mapHasKey, mapGet, mapSet, mapDelete, mapKeys, mapValues } from "std/co
 import { setIsSubset, setEquals, distinctCount, mapSize, mapGetOr, mapClear, frequencies } from "std/collections"
 import { newHashMap, hmSet, hmGet, hmHas, hmDelete, hmSize, hmClear, hmKeys, hmValues, hmGetOr } from "std/collections"
 import { newHashSet, hsAdd, hsHas, hsDelete, hsSize, hsClear, hsValues } from "std/collections"
+import { emptyMap, assoc, get, getOr, hasKey, dissoc, mapCount, mapEmpty } from "std/collections"
+import { keysOf, valuesOf, clearMap, emptySet, conj, containsKey, disj, setCount } from "std/collections"
+import { setEmpty, setItems, clearSet, toSet } from "std/collections"

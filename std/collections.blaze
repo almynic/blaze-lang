@@ -300,3 +300,97 @@ fn hsClear<S>(set: S) -> nil {
 fn hsValues<S, V>(set: S) -> [V] {
     return hashSetValues(set)
 }
+
+// ============================================================================
+// Functional-first map/set API (preferred surface)
+// ============================================================================
+
+fn emptyMap() {
+    return newHashMap()
+}
+
+fn assoc<M, K, V>(map: M, key: K, value: V) -> M {
+    hmSet(map, key, value)
+    return map
+}
+
+fn get<M, K, V>(map: M, key: K) -> V? {
+    return hmGet(map, key)
+}
+
+fn getOr<M, K, V>(map: M, key: K, fallback: V) -> V {
+    return hmGetOr(map, key, fallback)
+}
+
+fn hasKey<M, K>(map: M, key: K) -> bool {
+    return hmHas(map, key)
+}
+
+fn dissoc<M, K>(map: M, key: K) -> M {
+    let _ = hmDelete(map, key)
+    return map
+}
+
+fn mapCount<M>(map: M) -> int {
+    return hmSize(map)
+}
+
+fn mapEmpty<M>(map: M) -> bool {
+    return mapCount(map) == 0
+}
+
+fn keysOf<M, K>(map: M) -> [K] {
+    return hmKeys(map)
+}
+
+fn valuesOf<M, V>(map: M) -> [V] {
+    return hmValues(map)
+}
+
+fn clearMap<M>(map: M) -> M {
+    hmClear(map)
+    return map
+}
+
+fn emptySet() {
+    return newHashSet()
+}
+
+fn conj<S, V>(set: S, value: V) -> S {
+    hsAdd(set, value)
+    return set
+}
+
+fn containsKey<S, V>(set: S, value: V) -> bool {
+    return hsHas(set, value)
+}
+
+fn disj<S, V>(set: S, value: V) -> S {
+    let _ = hsDelete(set, value)
+    return set
+}
+
+fn setCount<S>(set: S) -> int {
+    return hsSize(set)
+}
+
+fn setEmpty<S>(set: S) -> bool {
+    return setCount(set) == 0
+}
+
+fn setItems<S, V>(set: S) -> [V] {
+    return hsValues(set)
+}
+
+fn clearSet<S>(set: S) -> S {
+    hsClear(set)
+    return set
+}
+
+fn toSet<T>(items: [T]) {
+    let set = emptySet()
+    for item in items {
+        conj(set, item)
+    }
+    return set
+}
