@@ -57,12 +57,16 @@ typedef enum {
     TOKEN_WHILE,
     TOKEN_FOR,
     TOKEN_IN,
+    TOKEN_OUT,
     TOKEN_CLASS,
+    TOKEN_INTERFACE,
+    TOKEN_IMPLEMENTS,
     TOKEN_EXTENDS,
     TOKEN_THIS,
     TOKEN_SUPER,
     TOKEN_IMPORT,
     TOKEN_MODULE,
+    TOKEN_ENUM,
     TOKEN_MATCH,
     TOKEN_TRY,
     TOKEN_CATCH,
@@ -72,6 +76,7 @@ typedef enum {
     TOKEN_FALSE,
     TOKEN_NIL,
     TOKEN_PRINT,            // Built-in for now
+    TOKEN_TYPE_ALIAS,       // keyword `type` for type alias declarations
 
     // Type keywords
     TOKEN_TYPE_INT,         // int

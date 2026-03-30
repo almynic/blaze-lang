@@ -11,6 +11,7 @@ typedef struct {
     Token previous;
     bool hadError;
     bool panicMode;
+    int speculativeDepth;   // >0: suppress error reporting (generic-call lookahead)
     const char* source;  // Source code for error context display
 } Parser;
 

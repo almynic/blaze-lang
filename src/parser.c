@@ -11,12 +11,17 @@ void initParser(Parser* parser, const char* source) {
     initScanner(&parser->scanner, source);
     parser->hadError = false;
     parser->panicMode = false;
+    parser->speculativeDepth = 0;
     parser->current.type = TOKEN_EOF;
     parser->previous.type = TOKEN_EOF;
     parser->source = source;  // Store source for error reporting
 }
 
 static void errorAtWithSuggestion(Parser* parser, Token* token, const char* message, const char* suggestion) {
+    if (parser->speculativeDepth > 0) {
+        parser->hadError = true;
+        return;
+    }
     if (parser->panicMode) return;
     parser->panicMode = true;
 
@@ -188,7 +193,9 @@ static void synchronize(Parser* parser) {
 
         switch (parser->current.type) {
             case TOKEN_CLASS:
+            case TOKEN_ENUM:
             case TOKEN_FN:
+            case TOKEN_TYPE_ALIAS:
             case TOKEN_LET:
             case TOKEN_CONST:
             case TOKEN_FOR:
@@ -209,8 +216,10 @@ static void synchronize(Parser* parser) {
 static Expr* expression(Parser* parser);
 static Stmt* declaration(Parser* parser);
 static Stmt* statement(Parser* parser);
+static Stmt* block(Parser* parser);
 static TypeNode* typeAnnotation(Parser* parser);
 static Expr* matchExpression(Parser* parser);
+static void parseAndDiscardTypeArguments(Parser* parser);
 
 // ============================================================================
 // Type Parsing
@@ -253,11 +262,37 @@ static TypeNode* typeAnnotation(Parser* parser) {
 
         type = newFunctionTypeNode(paramTypes, paramCount, returnType, fnToken);
     }
-    // Simple type: int, float, bool, string, or identifier
+    // Simple type: int, float, bool, string, or identifier (potentially generic)
     else if (match(parser, TOKEN_TYPE_INT) || match(parser, TOKEN_TYPE_FLOAT) ||
              match(parser, TOKEN_TYPE_BOOL) || match(parser, TOKEN_TYPE_STRING) ||
-             match(parser, TOKEN_IDENTIFIER)) {
-        type = newSimpleTypeNode(parser->previous);
+             match(parser, TOKEN_NIL) || match(parser, TOKEN_IDENTIFIER)) {
+        // Check if this is a generic type: Identifier<T, U, ...>
+        if (parser->previous.type == TOKEN_IDENTIFIER && check(parser, TOKEN_LESS)) {
+            Token name = parser->previous;
+            advance(parser); // consume '<'
+            
+            // Parse type arguments
+            TypeNode** typeArgs = NULL;
+            int typeArgCount = 0;
+            int typeArgCapacity = 0;
+            
+            // Parse first type argument
+            if (!check(parser, TOKEN_GREATER)) {
+                do {
+                    if (typeArgCount >= typeArgCapacity) {
+                        int oldCapacity = typeArgCapacity;
+                        typeArgCapacity = GROW_CAPACITY(oldCapacity);
+                        typeArgs = GROW_ARRAY(TypeNode*, typeArgs, oldCapacity, typeArgCapacity);
+                    }
+                    typeArgs[typeArgCount++] = typeAnnotation(parser);
+                } while (match(parser, TOKEN_COMMA));
+            }
+            
+            consume(parser, TOKEN_GREATER, "Expected '>' after type arguments.");
+            type = newGenericTypeNode(name, typeArgs, typeArgCount);
+        } else {
+            type = newSimpleTypeNode(parser->previous);
+        }
     }
     else {
         error(parser, "Expected type.");
@@ -305,8 +340,34 @@ static TypeNode* typeAnnotation(Parser* parser) {
             }
             else if (match(parser, TOKEN_TYPE_INT) || match(parser, TOKEN_TYPE_FLOAT) ||
                      match(parser, TOKEN_TYPE_BOOL) || match(parser, TOKEN_TYPE_STRING) ||
-                     match(parser, TOKEN_IDENTIFIER)) {
-                nextType = newSimpleTypeNode(parser->previous);
+                     match(parser, TOKEN_NIL) || match(parser, TOKEN_IDENTIFIER)) {
+                // Check if this is a generic type: Identifier<T, U, ...>
+                if (parser->previous.type == TOKEN_IDENTIFIER && check(parser, TOKEN_LESS)) {
+                    Token name = parser->previous;
+                    advance(parser); // consume '<'
+                    
+                    // Parse type arguments
+                    TypeNode** typeArgs = NULL;
+                    int typeArgCount = 0;
+                    int typeArgCapacity = 0;
+                    
+                    // Parse first type argument
+                    if (!check(parser, TOKEN_GREATER)) {
+                        do {
+                            if (typeArgCount >= typeArgCapacity) {
+                                int oldCapacity = typeArgCapacity;
+                                typeArgCapacity = GROW_CAPACITY(oldCapacity);
+                                typeArgs = GROW_ARRAY(TypeNode*, typeArgs, oldCapacity, typeArgCapacity);
+                            }
+                            typeArgs[typeArgCount++] = typeAnnotation(parser);
+                        } while (match(parser, TOKEN_COMMA));
+                    }
+                    
+                    consume(parser, TOKEN_GREATER, "Expected '>' after type arguments.");
+                    nextType = newGenericTypeNode(name, typeArgs, typeArgCount);
+                } else {
+                    nextType = newSimpleTypeNode(parser->previous);
+                }
             }
             else {
                 error(parser, "Expected type after '|'.");
@@ -441,7 +502,7 @@ static Expr* parseInterpolatedString(Parser* parser, Token stringToken) {
 
                 Expr** args = ALLOCATE(Expr*, 1);
                 args[0] = interpExpr;
-                Expr* toStringCall = newCallExpr(toStringVar, stringToken, args, 1);
+                Expr* toStringCall = newCallExpr(toStringVar, stringToken, args, 1, NULL, 0);
 
                 // Restore parser state
                 parser->scanner = savedScanner;
@@ -530,86 +591,91 @@ static Expr* literal(Parser* parser, bool canAssign) {
 
 static Expr* grouping(Parser* parser, bool canAssign) {
     (void)canAssign;
+    // Speculatively parse lambda:
+    // (a, b) => expr
+    // (a: T, b: U) => expr
+    // (a: T) -> R => expr
+    Scanner savedScanner = parser->scanner;
+    Token savedCurrent = parser->current;
+    Token savedPrevious = parser->previous;
 
-    // Try to parse as lambda parameters
-    // Look for pattern: (id, id, ...) =>
+    bool lambdaParsed = false;
+    Token* params = NULL;
+    TypeNode** paramTypes = NULL;
+    int paramCount = 0;
+    int paramCapacity = 0;
+    TypeNode* returnType = NULL;
+    Token arrowToken;
 
-    // First, check if next token could start params
     if (check(parser, TOKEN_RIGHT_PAREN)) {
-        // () - could be empty lambda or empty grouping (invalid)
-        advance(parser); // consume )
-        if (match(parser, TOKEN_FAT_ARROW)) {
-            // It's a lambda with no params
-            Token arrow = parser->previous;
-            Expr* body = expression(parser);
-            return newLambdaExpr(arrow, NULL, NULL, 0, NULL, body);
+        // Empty parameter list.
+        advance(parser);
+        if (match(parser, TOKEN_ARROW)) {
+            returnType = typeAnnotation(parser);
         }
-        error(parser, "Expected expression inside parentheses.");
-        return NULL;
-    }
-
-    if (check(parser, TOKEN_IDENTIFIER)) {
-        // Could be lambda params or start of expression
-        // Speculatively parse as lambda params: id [, id]*
-
-        int capacity = 8;
-        int count = 0;
-        Token* params = ALLOCATE(Token, capacity);
-
-        // First parameter
-        advance(parser);  // Consume identifier
-        params[count++] = parser->previous;
-
-        // Check for more parameters
-        while (match(parser, TOKEN_COMMA)) {
+        if (match(parser, TOKEN_FAT_ARROW)) {
+            arrowToken = parser->previous;
+            lambdaParsed = true;
+        }
+    } else if (check(parser, TOKEN_IDENTIFIER)) {
+        while (true) {
             if (!check(parser, TOKEN_IDENTIFIER)) {
-                // Not a simple parameter list, this isn't a lambda
-                // We need to backtrack - but we can't easily
-                // Instead, error out for now
-                error(parser, "Expected parameter name after ','.");
-                FREE_ARRAY(Token, params, capacity);
-                return NULL;
-            }
-            advance(parser);  // Consume identifier
-            if (count >= capacity) {
-                int oldCapacity = capacity;
-                capacity = GROW_CAPACITY(oldCapacity);
-                params = GROW_ARRAY(Token, params, oldCapacity, capacity);
-            }
-            params[count++] = parser->previous;
-        }
-
-        consume(parser, TOKEN_RIGHT_PAREN, "Expected ')' after parameters.");
-
-        if (match(parser, TOKEN_FAT_ARROW)) {
-            // It's a lambda
-            Token arrow = parser->previous;
-
-            TypeNode** paramTypes = ALLOCATE(TypeNode*, count);
-            for (int i = 0; i < count; i++) {
-                paramTypes[i] = NULL;  // No type annotation
+                lambdaParsed = false;
+                break;
             }
 
-            Expr* body = expression(parser);
-            return newLambdaExpr(arrow, params, paramTypes, count, NULL, body);
+            if (paramCount >= paramCapacity) {
+                int oldCapacity = paramCapacity;
+                paramCapacity = GROW_CAPACITY(oldCapacity);
+                params = GROW_ARRAY(Token, params, oldCapacity, paramCapacity);
+                paramTypes = GROW_ARRAY(TypeNode*, paramTypes, oldCapacity, paramCapacity);
+            }
+
+            advance(parser);
+            params[paramCount] = parser->previous;
+            paramTypes[paramCount] = NULL;
+
+            if (match(parser, TOKEN_COLON)) {
+                paramTypes[paramCount] = typeAnnotation(parser);
+            }
+            paramCount++;
+
+            if (!match(parser, TOKEN_COMMA)) break;
         }
 
-        // Not a lambda - it was a grouping expression
-        // We consumed identifiers as tokens, need to reconstruct
-        if (count == 1) {
-            // Single identifier - create a variable expression
-            Expr* expr = newVariableExpr(params[0]);
-            FREE_ARRAY(Token, params, capacity);
-            return newGroupingExpr(expr);
+        if (check(parser, TOKEN_RIGHT_PAREN)) {
+            advance(parser);
+            if (match(parser, TOKEN_ARROW)) {
+                returnType = typeAnnotation(parser);
+            }
+            if (match(parser, TOKEN_FAT_ARROW)) {
+                arrowToken = parser->previous;
+                lambdaParsed = true;
+            }
         }
-
-        // Multiple identifiers without => is an error (comma expression not supported here)
-        error(parser, "Expected '=>' for lambda or single expression in parentheses.");
-        FREE_ARRAY(Token, params, capacity);
-        return NULL;
     }
 
-    // Regular expression in parentheses
+    if (lambdaParsed) {
+        if (match(parser, TOKEN_LEFT_BRACE)) {
+            Stmt* blockStmt = block(parser);
+            return newLambdaBlockExpr(arrowToken, params, paramTypes, paramCount, returnType, blockStmt);
+        }
+        Expr* body = expression(parser);
+        return newLambdaExpr(arrowToken, params, paramTypes, paramCount, returnType, body);
+    }
+
+    // Roll back and parse as a normal grouping expression.
+    for (int i = 0; i < paramCount; i++) {
+        freeTypeNode(paramTypes[i]);
+    }
+    FREE_ARRAY(TypeNode*, paramTypes, paramCapacity);
+    FREE_ARRAY(Token, params, paramCapacity);
+    freeTypeNode(returnType);
+
+    parser->scanner = savedScanner;
+    parser->current = savedCurrent;
+    parser->previous = savedPrevious;
+
     Expr* expr = expression(parser);
     consume(parser, TOKEN_RIGHT_PAREN, "Expected ')' after expression.");
     return newGroupingExpr(expr);
@@ -624,6 +690,39 @@ static Expr* variable(Parser* parser, bool canAssign) {
     }
 
     return newVariableExpr(name);
+}
+
+static void parseAndDiscardTypeArguments(Parser* parser) {
+    // Parses generic arg list content and consumes trailing '>'.
+    // Caller must have consumed the opening '<' already.
+    if (!check(parser, TOKEN_GREATER)) {
+        do {
+            TypeNode* arg = typeAnnotation(parser);
+            if (arg != NULL) {
+                freeTypeNode(arg);
+            }
+        } while (match(parser, TOKEN_COMMA));
+    }
+    consume(parser, TOKEN_GREATER, "Expected '>' after type arguments.");
+}
+
+static TypeNode** parseTypeArgumentListForCall(Parser* parser, int* outCount) {
+    TypeNode** typeArgs = NULL;
+    int count = 0;
+    int capacity = 0;
+    if (!check(parser, TOKEN_GREATER)) {
+        do {
+            if (count >= capacity) {
+                int oldCapacity = capacity;
+                capacity = GROW_CAPACITY(oldCapacity);
+                typeArgs = GROW_ARRAY(TypeNode*, typeArgs, oldCapacity, capacity);
+            }
+            typeArgs[count++] = typeAnnotation(parser);
+        } while (match(parser, TOKEN_COMMA));
+    }
+    consume(parser, TOKEN_GREATER, "Expected '>' after type arguments.");
+    *outCount = count;
+    return typeArgs;
 }
 
 static Expr* thisExpr(Parser* parser, bool canAssign) {
@@ -705,7 +804,8 @@ static Expr* callExpr(Parser* parser, bool canAssign) {
     return NULL;
 }
 
-static Expr* finishCall(Parser* parser, Expr* callee) {
+static Expr* finishCall(Parser* parser, Expr* callee, TypeNode** explicitTypeArgs,
+                        int explicitTypeArgCount) {
     Token paren = parser->previous;
 
     Expr** arguments = NULL;
@@ -729,7 +829,7 @@ static Expr* finishCall(Parser* parser, Expr* callee) {
     }
 
     consume(parser, TOKEN_RIGHT_PAREN, "Expected ')' after arguments.");
-    return newCallExpr(callee, paren, arguments, argCount);
+    return newCallExpr(callee, paren, arguments, argCount, explicitTypeArgs, explicitTypeArgCount);
 }
 
 static Expr* dotExpr(Parser* parser, bool canAssign) {
@@ -812,6 +912,7 @@ ParseRule rules[] = {
     [TOKEN_FALSE]         = {literal,  NULL,   PREC_NONE},
     [TOKEN_NIL]           = {literal,  NULL,   PREC_NONE},
     [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_TYPE_ALIAS]    = {NULL,     NULL,   PREC_NONE},
     [TOKEN_TYPE_INT]      = {NULL,     NULL,   PREC_NONE},
     [TOKEN_TYPE_FLOAT]    = {NULL,     NULL,   PREC_NONE},
     [TOKEN_TYPE_BOOL]     = {NULL,     NULL,   PREC_NONE},
@@ -823,6 +924,24 @@ ParseRule rules[] = {
 
 static ParseRule* getRule(TokenType type) {
     return &rules[type];
+}
+
+typedef struct {
+    Scanner scanner;
+    Token current;
+    Token previous;
+} ParserCheckpoint;
+
+static void parserCheckpoint(Parser* p, ParserCheckpoint* ck) {
+    ck->scanner = p->scanner;
+    ck->current = p->current;
+    ck->previous = p->previous;
+}
+
+static void parserRestore(Parser* p, ParserCheckpoint* ck) {
+    p->scanner = ck->scanner;
+    p->current = ck->current;
+    p->previous = ck->previous;
 }
 
 static Expr* parsePrecedence(Parser* parser, Precedence precedence) {
@@ -842,7 +961,7 @@ static Expr* parsePrecedence(Parser* parser, Precedence precedence) {
 
         // Handle special infix cases
         if (op.type == TOKEN_LEFT_PAREN) {
-            left = finishCall(parser, left);
+            left = finishCall(parser, left, NULL, 0);
         } else if (op.type == TOKEN_DOT || op.type == TOKEN_QUESTION_DOT) {
             bool isOptional = (op.type == TOKEN_QUESTION_DOT);
             consume(parser, TOKEN_IDENTIFIER, isOptional
@@ -879,6 +998,35 @@ static Expr* parsePrecedence(Parser* parser, Precedence precedence) {
         } else if (op.type == TOKEN_QUESTION_QUESTION) {
             Expr* right = parsePrecedence(parser, PREC_OR + 1);
             left = newNullCoalesceExpr(left, op, right);
+        } else if (op.type == TOKEN_LESS && left->kind == EXPR_VARIABLE) {
+            // Maybe foo<T>(...) — try generic call; otherwise binary '<'
+            ParserCheckpoint ck;
+            parserCheckpoint(parser, &ck);
+            bool hadErrBefore = parser->hadError;
+            bool panicBefore = parser->panicMode;
+
+            parser->speculativeDepth++;
+            int typeArgCount = 0;
+            TypeNode** typeArgs = parseTypeArgumentListForCall(parser, &typeArgCount);
+            parser->speculativeDepth--;
+
+            if (parser->hadError || !check(parser, TOKEN_LEFT_PAREN)) {
+                if (typeArgs != NULL) {
+                    for (int i = 0; i < typeArgCount; i++) {
+                        freeTypeNode(typeArgs[i]);
+                    }
+                    FREE_ARRAY(TypeNode*, typeArgs, typeArgCount);
+                }
+                parserRestore(parser, &ck);
+                parser->hadError = hadErrBefore;
+                parser->panicMode = panicBefore;
+                ParseRule* rule = getRule(op.type);
+                Expr* right = parsePrecedence(parser, (Precedence)(rule->precedence + 1));
+                left = newBinaryExpr(left, op, right);
+            } else {
+                advance(parser); // consume '('
+                left = finishCall(parser, left, typeArgs, typeArgCount);
+            }
         } else {
             // Regular binary operator
             ParseRule* rule = getRule(op.type);
@@ -1002,6 +1150,106 @@ static Stmt* returnStatement(Parser* parser) {
 }
 
 static Stmt* varDeclaration(Parser* parser, bool isConst) {
+    // Check for array destructuring: let [a, b, c] = ...
+    if (check(parser, TOKEN_LEFT_BRACKET)) {
+        advance(parser); // consume '['
+
+        int capacity = 4;
+        int count = 0;
+        Token* names = ALLOCATE(Token, capacity);
+        int restIndex = -1;
+
+        if (!check(parser, TOKEN_RIGHT_BRACKET)) {
+            do {
+                // Check for rest parameter: ...rest
+                bool isRest = false;
+                if (match(parser, TOKEN_DOT_DOT_DOT)) {
+                    isRest = true;
+                    if (restIndex != -1) {
+                        error(parser, "Only one rest parameter allowed in destructuring.");
+                    }
+                    restIndex = count;
+                }
+
+                if (count >= capacity) {
+                    int old = capacity;
+                    capacity = GROW_CAPACITY(old);
+                    names = GROW_ARRAY(Token, names, old, capacity);
+                }
+
+                consume(parser, TOKEN_IDENTIFIER, "Expected variable name in destructuring pattern.");
+                names[count++] = parser->previous;
+
+                // Rest parameter must be last
+                if (isRest && check(parser, TOKEN_COMMA)) {
+                    error(parser, "Rest parameter must be last in destructuring pattern.");
+                    // Continue parsing to avoid cascading errors
+                }
+            } while (match(parser, TOKEN_COMMA));
+        }
+
+        consume(parser, TOKEN_RIGHT_BRACKET, "Expected ']' after destructuring pattern.");
+
+        // Optional type annotation (applies to the whole array)
+        TypeNode* type = NULL;
+        if (match(parser, TOKEN_COLON)) {
+            type = typeAnnotation(parser);
+        }
+
+        // Destructuring requires initializer
+        Expr* initializer = NULL;
+        if (match(parser, TOKEN_EQUAL)) {
+            initializer = expression(parser);
+        } else {
+            error(parser, "Array destructuring requires an initializer.");
+        }
+
+        consumeNewlineOrSemicolon(parser);
+        return newArrayDestructureStmt(names, count, restIndex, type, initializer, isConst);
+    }
+
+    // Check for object destructuring: let {x, y} = ...
+    if (check(parser, TOKEN_LEFT_BRACE)) {
+        advance(parser); // consume '{'
+
+        int capacity = 4;
+        int count = 0;
+        Token* names = ALLOCATE(Token, capacity);
+
+        if (!check(parser, TOKEN_RIGHT_BRACE)) {
+            do {
+                if (count >= capacity) {
+                    int old = capacity;
+                    capacity = GROW_CAPACITY(old);
+                    names = GROW_ARRAY(Token, names, old, capacity);
+                }
+
+                consume(parser, TOKEN_IDENTIFIER, "Expected property name in object destructuring pattern.");
+                names[count++] = parser->previous;
+            } while (match(parser, TOKEN_COMMA));
+        }
+
+        consume(parser, TOKEN_RIGHT_BRACE, "Expected '}' after object destructuring pattern.");
+
+        // Optional type annotation
+        TypeNode* type = NULL;
+        if (match(parser, TOKEN_COLON)) {
+            type = typeAnnotation(parser);
+        }
+
+        // Destructuring requires initializer
+        Expr* initializer = NULL;
+        if (match(parser, TOKEN_EQUAL)) {
+            initializer = expression(parser);
+        } else {
+            error(parser, "Object destructuring requires an initializer.");
+        }
+
+        consumeNewlineOrSemicolon(parser);
+        return newObjectDestructureStmt(names, count, type, initializer, isConst);
+    }
+
+    // Simple variable declaration
     consume(parser, TOKEN_IDENTIFIER, "Expected variable name.");
     Token name = parser->previous;
 
@@ -1022,8 +1270,32 @@ static Stmt* varDeclaration(Parser* parser, bool isConst) {
 }
 
 static Stmt* functionDeclaration(Parser* parser) {
+    // Check for type parameters: fn<T, U>(params) -> returnType
+    Token* typeParams = NULL;
+    int typeParamCount = 0;
+    int typeParamCapacity = 0;
+
     consume(parser, TOKEN_IDENTIFIER, "Expected function name.");
     Token name = parser->previous;
+
+    // Check for type parameters
+    if (match(parser, TOKEN_LESS)) {
+        // Parse type parameters
+        if (!check(parser, TOKEN_GREATER)) {
+            do {
+                if (typeParamCount >= typeParamCapacity) {
+                    int oldCapacity = typeParamCapacity;
+                    typeParamCapacity = GROW_CAPACITY(oldCapacity);
+                    typeParams = GROW_ARRAY(Token, typeParams, oldCapacity, typeParamCapacity);
+                }
+
+                consume(parser, TOKEN_IDENTIFIER, "Expected type parameter name.");
+                typeParams[typeParamCount++] = parser->previous;
+            } while (match(parser, TOKEN_COMMA));
+        }
+
+        consume(parser, TOKEN_GREATER, "Expected '>' after type parameters.");
+    }
 
     consume(parser, TOKEN_LEFT_PAREN, "Expected '(' after function name.");
 
@@ -1062,19 +1334,145 @@ static Stmt* functionDeclaration(Parser* parser) {
     consume(parser, TOKEN_LEFT_BRACE, "Expected '{' before function body.");
     Stmt* body = block(parser);
 
-    return newFunctionStmt(name, params, paramTypes, paramCount, returnType, body);
+    return newFunctionStmt(name, typeParams, typeParamCount, params, paramTypes, paramCount, returnType, body);
+}
+
+static Stmt* interfaceDeclaration(Parser* parser) {
+    consume(parser, TOKEN_IDENTIFIER, "Expected interface name.");
+    Token name = parser->previous;
+
+    consume(parser, TOKEN_LEFT_BRACE, "Expected '{' before interface body.");
+    skipNewlines(parser);
+
+    int capacity = 8;
+    int count = 0;
+    InterfaceMethodDecl* methods = ALLOCATE(InterfaceMethodDecl, capacity);
+
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+        if (!match(parser, TOKEN_FN)) {
+            error(parser, "Expected 'fn' for interface method.");
+            break;
+        }
+
+        consume(parser, TOKEN_IDENTIFIER, "Expected method name.");
+        Token methodName = parser->previous;
+
+        consume(parser, TOKEN_LEFT_PAREN, "Expected '(' after method name.");
+
+        Token* params = NULL;
+        TypeNode** paramTypes = NULL;
+        int paramCount = 0;
+        int pCapacity = 0;
+
+        if (!check(parser, TOKEN_RIGHT_PAREN)) {
+            do {
+                if (paramCount >= pCapacity) {
+                    int old = pCapacity;
+                    pCapacity = GROW_CAPACITY(old);
+                    params = GROW_ARRAY(Token, params, old, pCapacity);
+                    paramTypes = GROW_ARRAY(TypeNode*, paramTypes, old, pCapacity);
+                }
+
+                consume(parser, TOKEN_IDENTIFIER, "Expected parameter name.");
+                params[paramCount] = parser->previous;
+
+                consume(parser, TOKEN_COLON, "Expected ':' after parameter name.");
+                paramTypes[paramCount] = typeAnnotation(parser);
+
+                paramCount++;
+            } while (match(parser, TOKEN_COMMA));
+        }
+
+        consume(parser, TOKEN_RIGHT_PAREN, "Expected ')' after parameters.");
+
+        TypeNode* returnType = NULL;
+        if (match(parser, TOKEN_ARROW)) {
+            returnType = typeAnnotation(parser);
+        }
+
+        if (count >= capacity) {
+            int oldCapacity = capacity;
+            capacity = GROW_CAPACITY(oldCapacity);
+            methods = GROW_ARRAY(InterfaceMethodDecl, methods, oldCapacity, capacity);
+        }
+
+        methods[count].name = methodName;
+        methods[count].params = params;
+        methods[count].paramTypes = paramTypes;
+        methods[count].paramCount = paramCount;
+        methods[count].returnType = returnType;
+        count++;
+
+        skipNewlines(parser);
+    }
+
+    consume(parser, TOKEN_RIGHT_BRACE, "Expected '}' after interface body.");
+    return newInterfaceStmt(name, methods, count);
 }
 
 static Stmt* classDeclaration(Parser* parser) {
     consume(parser, TOKEN_IDENTIFIER, "Expected class name.");
     Token name = parser->previous;
 
-    Token superclass;
-    bool hasSuperclass = false;
+    Token* typeParams = NULL;
+    TypeParamVariance* typeParamVariances = NULL;
+    Token* typeParamBounds = NULL;
+    int typeParamCount = 0;
+    int typeParamCapacity = 0;
+    if (match(parser, TOKEN_LESS)) {
+        if (!check(parser, TOKEN_GREATER)) {
+            do {
+                if (typeParamCount >= typeParamCapacity) {
+                    int oldCapacity = typeParamCapacity;
+                    typeParamCapacity = GROW_CAPACITY(oldCapacity);
+                    typeParams = GROW_ARRAY(Token, typeParams, oldCapacity, typeParamCapacity);
+                    typeParamVariances = GROW_ARRAY(TypeParamVariance, typeParamVariances, oldCapacity,
+                                                    typeParamCapacity);
+                    typeParamBounds = GROW_ARRAY(Token, typeParamBounds, oldCapacity, typeParamCapacity);
+                }
+                TypeParamVariance variance = TYPE_PARAM_VAR_INVARIANT;
+                if (match(parser, TOKEN_OUT)) {
+                    variance = TYPE_PARAM_VAR_OUT;
+                } else if (match(parser, TOKEN_IN)) {
+                    variance = TYPE_PARAM_VAR_IN;
+                }
+                consume(parser, TOKEN_IDENTIFIER, "Expected type parameter name.");
+                typeParams[typeParamCount] = parser->previous;
+                typeParamVariances[typeParamCount] = variance;
+                Token boundTok;
+                boundTok.type = TOKEN_IDENTIFIER;
+                boundTok.start = NULL;
+                boundTok.length = 0;
+                boundTok.line = parser->previous.line;
+                if (match(parser, TOKEN_COLON)) {
+                    consume(parser, TOKEN_IDENTIFIER, "Expected bound interface name.");
+                    boundTok = parser->previous;
+                }
+                typeParamBounds[typeParamCount] = boundTok;
+                typeParamCount++;
+            } while (match(parser, TOKEN_COMMA));
+        }
+        consume(parser, TOKEN_GREATER, "Expected '>' after type parameters.");
+    }
+
+    TypeNode* superclassType = NULL;
     if (match(parser, TOKEN_EXTENDS)) {
-        consume(parser, TOKEN_IDENTIFIER, "Expected superclass name.");
-        superclass = parser->previous;
-        hasSuperclass = true;
+        superclassType = typeAnnotation(parser);
+    }
+
+    Token* implementsNames = NULL;
+    int implementsCount = 0;
+    int implementsCapacity = 0;
+    if (match(parser, TOKEN_IMPLEMENTS)) {
+        do {
+            if (implementsCount >= implementsCapacity) {
+                int old = implementsCapacity;
+                implementsCapacity = GROW_CAPACITY(old);
+                implementsNames = GROW_ARRAY(Token, implementsNames, old, implementsCapacity);
+            }
+            consume(parser, TOKEN_IDENTIFIER, "Expected interface name.");
+            implementsNames[implementsCount++] = parser->previous;
+        } while (match(parser, TOKEN_COMMA));
     }
 
     consume(parser, TOKEN_LEFT_BRACE, "Expected '{' before class body.");
@@ -1137,6 +1535,8 @@ static Stmt* classDeclaration(Parser* parser) {
             }
 
             methods[methodCount].name = methodName;
+            methods[methodCount].typeParams = NULL;
+            methods[methodCount].typeParamCount = 0;
             methods[methodCount].params = params;
             methods[methodCount].paramTypes = paramTypes;
             methods[methodCount].paramCount = paramCount;
@@ -1170,7 +1570,78 @@ static Stmt* classDeclaration(Parser* parser) {
 
     consume(parser, TOKEN_RIGHT_BRACE, "Expected '}' after class body.");
 
-    return newClassStmt(name, superclass, hasSuperclass, fields, fieldCount, methods, methodCount);
+    return newClassStmt(name, typeParams, typeParamCount, typeParamVariances,
+                        typeParamBounds, superclassType, implementsNames, implementsCount,
+                        fields, fieldCount, methods, methodCount);
+}
+
+static Stmt* typeAliasDeclaration(Parser* parser) {
+    Token keyword = parser->previous;
+    consume(parser, TOKEN_IDENTIFIER, "Expected type alias name.");
+    Token name = parser->previous;
+    consume(parser, TOKEN_EQUAL, "Expected '=' in type alias.");
+    TypeNode* target = typeAnnotation(parser);
+    consumeNewlineOrSemicolon(parser);
+    return newTypeAliasStmt(keyword, name, target);
+}
+
+static Stmt* enumDeclaration(Parser* parser) {
+    consume(parser, TOKEN_IDENTIFIER, "Expected enum name.");
+    Token name = parser->previous;
+
+    consume(parser, TOKEN_LEFT_BRACE, "Expected '{' before enum body.");
+    skipNewlines(parser);
+
+    int capacity = 8;
+    int count = 0;
+    EnumVariant* variants = ALLOCATE(EnumVariant, capacity);
+
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+        if (count >= capacity) {
+            int oldCapacity = capacity;
+            capacity = GROW_CAPACITY(oldCapacity);
+            variants = GROW_ARRAY(EnumVariant, variants, oldCapacity, capacity);
+        }
+
+        consume(parser, TOKEN_IDENTIFIER, "Expected variant name.");
+        variants[count].name = parser->previous;
+        variants[count].fieldTypes = NULL;
+        variants[count].fieldCount = 0;
+
+        // Optional fields: Variant(type1, type2)
+        if (match(parser, TOKEN_LEFT_PAREN)) {
+            int fCapacity = 4;
+            int fCount = 0;
+            TypeNode** fieldTypes = ALLOCATE(TypeNode*, fCapacity);
+
+            if (!check(parser, TOKEN_RIGHT_PAREN)) {
+                do {
+                    if (fCount >= fCapacity) {
+                        int old = fCapacity;
+                        fCapacity = GROW_CAPACITY(old);
+                        fieldTypes = GROW_ARRAY(TypeNode*, fieldTypes, old, fCapacity);
+                    }
+                    fieldTypes[fCount++] = typeAnnotation(parser);
+                } while (match(parser, TOKEN_COMMA));
+            }
+
+            consume(parser, TOKEN_RIGHT_PAREN, "Expected ')' after variant fields.");
+            variants[count].fieldTypes = fieldTypes;
+            variants[count].fieldCount = fCount;
+        }
+
+        count++;
+        skipNewlines(parser);
+
+        // Optional comma or newline
+        if (match(parser, TOKEN_COMMA)) {
+            skipNewlines(parser);
+        }
+    }
+
+    consume(parser, TOKEN_RIGHT_BRACE, "Expected '}' after enum body.");
+
+    return newEnumStmt(name, variants, count);
 }
 
 static Stmt* expressionStatement(Parser* parser) {
@@ -1200,22 +1671,41 @@ static Stmt* matchStatement(Parser* parser) {
             cases = GROW_ARRAY(CaseClause, cases, oldCapacity, capacity);
         }
 
+        cases[count].destructureParams = NULL;
+        cases[count].destructureCount = 0;
+
         // Check for wildcard pattern '_'
-        if (check(parser, TOKEN_IDENTIFIER)) {
-            Token t = parser->current;
-            if (t.length == 1 && t.start[0] == '_') {
-                advance(parser);  // consume _
-                cases[count].pattern = NULL;
-                cases[count].isWildcard = true;
-            } else {
-                // Not a wildcard - parse as literal expression
-                cases[count].pattern = parsePrecedence(parser, PREC_PRIMARY);
-                cases[count].isWildcard = false;
-            }
+        if (check(parser, TOKEN_IDENTIFIER) && parser->current.length == 1 && parser->current.start[0] == '_') {
+            advance(parser);  // consume _
+            cases[count].pattern = NULL;
+            cases[count].isWildcard = true;
         } else {
-            // Literal pattern (numbers, strings, booleans)
-            cases[count].pattern = parsePrecedence(parser, PREC_PRIMARY);
+            // Literal pattern or Enum variant Color.Red
+            cases[count].pattern = parsePrecedence(parser, PREC_CALL);
             cases[count].isWildcard = false;
+
+            // Check for destructuring: Variant(a, b)
+            if (match(parser, TOKEN_LEFT_PAREN)) {
+                    int dCapacity = 4;
+                    int dCount = 0;
+                    Token* dParams = ALLOCATE(Token, dCapacity);
+
+                    if (!check(parser, TOKEN_RIGHT_PAREN)) {
+                        do {
+                            if (dCount >= dCapacity) {
+                                int old = dCapacity;
+                                dCapacity = GROW_CAPACITY(old);
+                                dParams = GROW_ARRAY(Token, dParams, old, dCapacity);
+                            }
+                            consume(parser, TOKEN_IDENTIFIER, "Expected parameter name in destructuring.");
+                            dParams[dCount++] = parser->previous;
+                        } while (match(parser, TOKEN_COMMA));
+                    }
+
+                    consume(parser, TOKEN_RIGHT_PAREN, "Expected ')' after destructuring parameters.");
+                    cases[count].destructureParams = dParams;
+                    cases[count].destructureCount = dCount;
+                }
         }
 
         // Expect '=>' or directly a block
@@ -1267,22 +1757,41 @@ static Expr* matchExpression(Parser* parser) {
             cases = GROW_ARRAY(ExprCaseClause, cases, oldCapacity, capacity);
         }
 
+        cases[count].destructureParams = NULL;
+        cases[count].destructureCount = 0;
+
         // Check for wildcard pattern '_'
-        if (check(parser, TOKEN_IDENTIFIER)) {
-            Token t = parser->current;
-            if (t.length == 1 && t.start[0] == '_') {
-                advance(parser);  // consume _
-                cases[count].pattern = NULL;
-                cases[count].isWildcard = true;
-            } else {
-                // Not a wildcard - parse as literal expression
-                cases[count].pattern = parsePrecedence(parser, PREC_PRIMARY);
-                cases[count].isWildcard = false;
-            }
+        if (check(parser, TOKEN_IDENTIFIER) && parser->current.length == 1 && parser->current.start[0] == '_') {
+            advance(parser);  // consume _
+            cases[count].pattern = NULL;
+            cases[count].isWildcard = true;
         } else {
-            // Literal pattern (numbers, strings, booleans)
-            cases[count].pattern = parsePrecedence(parser, PREC_PRIMARY);
+            // Literal pattern or Enum variant Color.Red
+            cases[count].pattern = parsePrecedence(parser, PREC_CALL);
             cases[count].isWildcard = false;
+
+            // Check for destructuring: Variant(a, b)
+            if (match(parser, TOKEN_LEFT_PAREN)) {
+                    int dCapacity = 4;
+                    int dCount = 0;
+                    Token* dParams = ALLOCATE(Token, dCapacity);
+
+                    if (!check(parser, TOKEN_RIGHT_PAREN)) {
+                        do {
+                            if (dCount >= dCapacity) {
+                                int old = dCapacity;
+                                dCapacity = GROW_CAPACITY(old);
+                                dParams = GROW_ARRAY(Token, dParams, old, dCapacity);
+                            }
+                            consume(parser, TOKEN_IDENTIFIER, "Expected parameter name in destructuring.");
+                            dParams[dCount++] = parser->previous;
+                        } while (match(parser, TOKEN_COMMA));
+                    }
+
+                    consume(parser, TOKEN_RIGHT_PAREN, "Expected ')' after destructuring parameters.");
+                    cases[count].destructureParams = dParams;
+                    cases[count].destructureCount = dCount;
+                }
         }
 
         // Expect '=>' followed by an expression
@@ -1436,10 +1945,16 @@ static Stmt* declaration(Parser* parser) {
         stmt = varDeclaration(parser, false);
     } else if (match(parser, TOKEN_CONST)) {
         stmt = varDeclaration(parser, true);
+    } else if (match(parser, TOKEN_TYPE_ALIAS)) {
+        stmt = typeAliasDeclaration(parser);
     } else if (match(parser, TOKEN_FN)) {
         stmt = functionDeclaration(parser);
     } else if (match(parser, TOKEN_CLASS)) {
         stmt = classDeclaration(parser);
+    } else if (match(parser, TOKEN_INTERFACE)) {
+        stmt = interfaceDeclaration(parser);
+    } else if (match(parser, TOKEN_ENUM)) {
+        stmt = enumDeclaration(parser);
     } else {
         stmt = statement(parser);
     }

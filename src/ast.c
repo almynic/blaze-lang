@@ -49,6 +49,16 @@ TypeNode* newUnionTypeNode(TypeNode** types, int typeCount, Token pipeToken) {
     return node;
 }
 
+TypeNode* newGenericTypeNode(Token name, TypeNode** typeArgs, int typeArgCount) {
+    TypeNode* node = ALLOCATE(TypeNode, 1);
+    node->kind = TYPE_NODE_GENERIC;
+    node->token = name;
+    node->as.generic.name = name;
+    node->as.generic.typeArgs = typeArgs;
+    node->as.generic.typeArgCount = typeArgCount;
+    return node;
+}
+
 void freeTypeNode(TypeNode* node) {
     if (node == NULL) return;
 
@@ -75,6 +85,13 @@ void freeTypeNode(TypeNode* node) {
             }
             FREE_ARRAY(TypeNode*, node->as.unionType.types,
                        node->as.unionType.typeCount);
+            break;
+        case TYPE_NODE_GENERIC:
+            for (int i = 0; i < node->as.generic.typeArgCount; i++) {
+                freeTypeNode(node->as.generic.typeArgs[i]);
+            }
+            FREE_ARRAY(TypeNode*, node->as.generic.typeArgs,
+                       node->as.generic.typeArgCount);
             break;
     }
     FREE(TypeNode, node);
@@ -156,13 +173,16 @@ Expr* newNullCoalesceExpr(Expr* left, Token op, Expr* right) {
     return expr;
 }
 
-Expr* newCallExpr(Expr* callee, Token paren, Expr** arguments, int argCount) {
+Expr* newCallExpr(Expr* callee, Token paren, Expr** arguments, int argCount,
+                  TypeNode** explicitTypeArgs, int explicitTypeArgCount) {
     Expr* expr = allocateExpr(EXPR_CALL, paren.line);
     expr->as.call.callee = callee;
     expr->as.call.paren = paren;
     expr->as.call.arguments = arguments;
     expr->as.call.argCount = argCount;
     expr->as.call.type = NULL;
+    expr->as.call.explicitTypeArgs = explicitTypeArgs;
+    expr->as.call.explicitTypeArgCount = explicitTypeArgCount;
     return expr;
 }
 
@@ -175,6 +195,23 @@ Expr* newLambdaExpr(Token arrow, Token* params, TypeNode** paramTypes,
     expr->as.lambda.paramCount = paramCount;
     expr->as.lambda.returnType = returnType;
     expr->as.lambda.body = body;
+    expr->as.lambda.blockBody = NULL;
+    expr->as.lambda.isBlockBody = false;
+    expr->as.lambda.type = NULL;
+    return expr;
+}
+
+Expr* newLambdaBlockExpr(Token arrow, Token* params, TypeNode** paramTypes,
+                         int paramCount, TypeNode* returnType, Stmt* blockBody) {
+    Expr* expr = allocateExpr(EXPR_LAMBDA, arrow.line);
+    expr->as.lambda.arrow = arrow;
+    expr->as.lambda.params = params;
+    expr->as.lambda.paramTypes = paramTypes;
+    expr->as.lambda.paramCount = paramCount;
+    expr->as.lambda.returnType = returnType;
+    expr->as.lambda.body = NULL;
+    expr->as.lambda.blockBody = blockBody;
+    expr->as.lambda.isBlockBody = true;
     expr->as.lambda.type = NULL;
     return expr;
 }
@@ -252,6 +289,10 @@ Expr* newMatchExpr(Token keyword, Expr* matchValue, ExprCaseClause* cases, int c
     Expr* expr = allocateExpr(EXPR_MATCH, keyword.line);
     expr->as.match.keyword = keyword;
     expr->as.match.matchValue = matchValue;
+    for (int i = 0; i < caseCount; i++) {
+        cases[i].destructureParams = NULL;
+        cases[i].destructureCount = 0;
+    }
     expr->as.match.cases = cases;
     expr->as.match.caseCount = caseCount;
     expr->as.match.type = NULL;
@@ -293,6 +334,13 @@ void freeExpr(Expr* expr) {
                 freeExpr(expr->as.call.arguments[i]);
             }
             FREE_ARRAY(Expr*, expr->as.call.arguments, expr->as.call.argCount);
+            if (expr->as.call.explicitTypeArgs != NULL) {
+                for (int i = 0; i < expr->as.call.explicitTypeArgCount; i++) {
+                    freeTypeNode(expr->as.call.explicitTypeArgs[i]);
+                }
+                FREE_ARRAY(TypeNode*, expr->as.call.explicitTypeArgs,
+                           expr->as.call.explicitTypeArgCount);
+            }
             break;
         case EXPR_LAMBDA:
             FREE_ARRAY(Token, expr->as.lambda.params, expr->as.lambda.paramCount);
@@ -301,7 +349,11 @@ void freeExpr(Expr* expr) {
             }
             FREE_ARRAY(TypeNode*, expr->as.lambda.paramTypes, expr->as.lambda.paramCount);
             freeTypeNode(expr->as.lambda.returnType);
-            freeExpr(expr->as.lambda.body);
+            if (expr->as.lambda.isBlockBody) {
+                freeStmt(expr->as.lambda.blockBody);
+            } else {
+                freeExpr(expr->as.lambda.body);
+            }
             break;
         case EXPR_ARRAY:
             for (int i = 0; i < expr->as.array.elementCount; i++) {
@@ -336,6 +388,10 @@ void freeExpr(Expr* expr) {
             for (int i = 0; i < expr->as.match.caseCount; i++) {
                 if (expr->as.match.cases[i].pattern != NULL) {
                     freeExpr(expr->as.match.cases[i].pattern);
+                }
+                if (expr->as.match.cases[i].destructureParams != NULL) {
+                    FREE_ARRAY(Token, expr->as.match.cases[i].destructureParams,
+                               expr->as.match.cases[i].destructureCount);
                 }
                 freeExpr(expr->as.match.cases[i].value);
             }
@@ -380,6 +436,38 @@ Stmt* newVarStmt(Token name, TypeNode* type, Expr* initializer, bool isConst) {
     stmt->as.var.initializer = initializer;
     stmt->as.var.isConst = isConst;
     stmt->as.var.type = NULL;
+    stmt->as.var.destructureKind = DESTRUCTURE_NONE;
+    stmt->as.var.destructureNames = NULL;
+    stmt->as.var.destructureCount = 0;
+    stmt->as.var.restIndex = -1;
+    return stmt;
+}
+
+Stmt* newArrayDestructureStmt(Token* names, int count, int restIndex, TypeNode* type, Expr* initializer, bool isConst) {
+    Stmt* stmt = allocateStmt(STMT_VAR, names[0].line);
+    stmt->as.var.name = names[0]; // Use first name for line tracking
+    stmt->as.var.typeAnnotation = type;
+    stmt->as.var.initializer = initializer;
+    stmt->as.var.isConst = isConst;
+    stmt->as.var.type = NULL;
+    stmt->as.var.destructureKind = DESTRUCTURE_ARRAY;
+    stmt->as.var.destructureNames = names;
+    stmt->as.var.destructureCount = count;
+    stmt->as.var.restIndex = restIndex;
+    return stmt;
+}
+
+Stmt* newObjectDestructureStmt(Token* names, int count, TypeNode* type, Expr* initializer, bool isConst) {
+    Stmt* stmt = allocateStmt(STMT_VAR, names[0].line);
+    stmt->as.var.name = names[0]; // Use first name for line tracking
+    stmt->as.var.typeAnnotation = type;
+    stmt->as.var.initializer = initializer;
+    stmt->as.var.isConst = isConst;
+    stmt->as.var.type = NULL;
+    stmt->as.var.destructureKind = DESTRUCTURE_OBJECT;
+    stmt->as.var.destructureNames = names;
+    stmt->as.var.destructureCount = count;
+    stmt->as.var.restIndex = -1; // No rest for objects yet
     return stmt;
 }
 
@@ -418,10 +506,13 @@ Stmt* newForStmt(Token keyword, Token variable, TypeNode* varType,
     return stmt;
 }
 
-Stmt* newFunctionStmt(Token name, Token* params, TypeNode** paramTypes,
-                      int paramCount, TypeNode* returnType, Stmt* body) {
+Stmt* newFunctionStmt(Token name, Token* typeParams, int typeParamCount,
+                       Token* params, TypeNode** paramTypes,
+                       int paramCount, TypeNode* returnType, Stmt* body) {
     Stmt* stmt = allocateStmt(STMT_FUNCTION, name.line);
     stmt->as.function.name = name;
+    stmt->as.function.typeParams = typeParams;
+    stmt->as.function.typeParamCount = typeParamCount;
     stmt->as.function.params = params;
     stmt->as.function.paramTypes = paramTypes;
     stmt->as.function.paramCount = paramCount;
@@ -438,13 +529,23 @@ Stmt* newReturnStmt(Token keyword, Expr* value) {
     return stmt;
 }
 
-Stmt* newClassStmt(Token name, Token superclass, bool hasSuperclass,
+Stmt* newClassStmt(Token name, Token* typeParams, int typeParamCount,
+                   TypeParamVariance* typeParamVariances,
+                   Token* typeParamBounds,
+                   TypeNode* superclassType,
+                   Token* implementsNames, int implementsCount,
                    FieldDecl* fields, int fieldCount,
                    FunctionStmt* methods, int methodCount) {
     Stmt* stmt = allocateStmt(STMT_CLASS, name.line);
     stmt->as.class_.name = name;
-    stmt->as.class_.superclass = superclass;
-    stmt->as.class_.hasSuperclass = hasSuperclass;
+    stmt->as.class_.typeParams = typeParams;
+    stmt->as.class_.typeParamCount = typeParamCount;
+    stmt->as.class_.typeParamVariances = typeParamVariances;
+    stmt->as.class_.typeParamBounds = typeParamBounds;
+    stmt->as.class_.superclassType = superclassType;
+    stmt->as.class_.implementsNames = implementsNames;
+    stmt->as.class_.implementsCount = implementsCount;
+    stmt->as.class_.superclassResolved = NULL;
     stmt->as.class_.fields = fields;
     stmt->as.class_.fieldCount = fieldCount;
     stmt->as.class_.methods = methods;
@@ -453,10 +554,40 @@ Stmt* newClassStmt(Token name, Token superclass, bool hasSuperclass,
     return stmt;
 }
 
+Stmt* newInterfaceStmt(Token name, InterfaceMethodDecl* methods, int methodCount) {
+    Stmt* stmt = allocateStmt(STMT_INTERFACE, name.line);
+    stmt->as.interface_.name = name;
+    stmt->as.interface_.methods = methods;
+    stmt->as.interface_.methodCount = methodCount;
+    stmt->as.interface_.type = NULL;
+    return stmt;
+}
+
+Stmt* newTypeAliasStmt(Token keyword, Token name, TypeNode* target) {
+    Stmt* stmt = allocateStmt(STMT_TYPE_ALIAS, keyword.line);
+    stmt->as.type_alias.keyword = keyword;
+    stmt->as.type_alias.name = name;
+    stmt->as.type_alias.target = target;
+    return stmt;
+}
+
+Stmt* newEnumStmt(Token name, EnumVariant* variants, int variantCount) {
+    Stmt* stmt = allocateStmt(STMT_ENUM, name.line);
+    stmt->as.enum_.name = name;
+    stmt->as.enum_.variants = variants;
+    stmt->as.enum_.variantCount = variantCount;
+    stmt->as.enum_.type = NULL;
+    return stmt;
+}
+
 Stmt* newMatchStmt(Token keyword, Expr* value, CaseClause* cases, int caseCount) {
     Stmt* stmt = allocateStmt(STMT_MATCH, keyword.line);
     stmt->as.match.keyword = keyword;
     stmt->as.match.value = value;
+    for (int i = 0; i < caseCount; i++) {
+        cases[i].destructureParams = NULL;
+        cases[i].destructureCount = 0;
+    }
     stmt->as.match.cases = cases;
     stmt->as.match.caseCount = caseCount;
     return stmt;
@@ -501,6 +632,9 @@ void freeStmt(Stmt* stmt) {
         case STMT_VAR:
             freeTypeNode(stmt->as.var.typeAnnotation);
             freeExpr(stmt->as.var.initializer);
+            if (stmt->as.var.destructureKind != DESTRUCTURE_NONE && stmt->as.var.destructureNames != NULL) {
+                FREE_ARRAY(Token, stmt->as.var.destructureNames, stmt->as.var.destructureCount);
+            }
             break;
         case STMT_BLOCK:
             for (int i = 0; i < stmt->as.block.count; i++) {
@@ -523,6 +657,7 @@ void freeStmt(Stmt* stmt) {
             freeStmt(stmt->as.for_.body);
             break;
         case STMT_FUNCTION:
+            FREE_ARRAY(Token, stmt->as.function.typeParams, stmt->as.function.typeParamCount);
             FREE_ARRAY(Token, stmt->as.function.params, stmt->as.function.paramCount);
             for (int i = 0; i < stmt->as.function.paramCount; i++) {
                 freeTypeNode(stmt->as.function.paramTypes[i]);
@@ -535,6 +670,20 @@ void freeStmt(Stmt* stmt) {
             freeExpr(stmt->as.return_.value);
             break;
         case STMT_CLASS:
+            if (stmt->as.class_.typeParams != NULL) {
+                FREE_ARRAY(Token, stmt->as.class_.typeParams, stmt->as.class_.typeParamCount);
+            }
+            if (stmt->as.class_.typeParamVariances != NULL) {
+                FREE_ARRAY(TypeParamVariance, stmt->as.class_.typeParamVariances,
+                           stmt->as.class_.typeParamCount);
+            }
+            if (stmt->as.class_.typeParamBounds != NULL) {
+                FREE_ARRAY(Token, stmt->as.class_.typeParamBounds, stmt->as.class_.typeParamCount);
+            }
+            freeTypeNode(stmt->as.class_.superclassType);
+            if (stmt->as.class_.implementsNames != NULL) {
+                FREE_ARRAY(Token, stmt->as.class_.implementsNames, stmt->as.class_.implementsCount);
+            }
             for (int i = 0; i < stmt->as.class_.fieldCount; i++) {
                 freeTypeNode(stmt->as.class_.fields[i].type);
             }
@@ -542,6 +691,7 @@ void freeStmt(Stmt* stmt) {
             // Methods are stored inline, free their internals
             for (int i = 0; i < stmt->as.class_.methodCount; i++) {
                 FunctionStmt* m = &stmt->as.class_.methods[i];
+                FREE_ARRAY(Token, m->typeParams, m->typeParamCount);
                 FREE_ARRAY(Token, m->params, m->paramCount);
                 for (int j = 0; j < m->paramCount; j++) {
                     freeTypeNode(m->paramTypes[j]);
@@ -552,11 +702,40 @@ void freeStmt(Stmt* stmt) {
             }
             FREE_ARRAY(FunctionStmt, stmt->as.class_.methods, stmt->as.class_.methodCount);
             break;
+        case STMT_INTERFACE:
+            for (int i = 0; i < stmt->as.interface_.methodCount; i++) {
+                InterfaceMethodDecl* m = &stmt->as.interface_.methods[i];
+                FREE_ARRAY(Token, m->params, m->paramCount);
+                for (int j = 0; j < m->paramCount; j++) {
+                    freeTypeNode(m->paramTypes[j]);
+                }
+                FREE_ARRAY(TypeNode*, m->paramTypes, m->paramCount);
+                freeTypeNode(m->returnType);
+            }
+            FREE_ARRAY(InterfaceMethodDecl, stmt->as.interface_.methods, stmt->as.interface_.methodCount);
+            break;
+        case STMT_TYPE_ALIAS:
+            freeTypeNode(stmt->as.type_alias.target);
+            break;
+        case STMT_ENUM:
+            for (int i = 0; i < stmt->as.enum_.variantCount; i++) {
+                EnumVariant* v = &stmt->as.enum_.variants[i];
+                for (int j = 0; j < v->fieldCount; j++) {
+                    freeTypeNode(v->fieldTypes[j]);
+                }
+                FREE_ARRAY(TypeNode*, v->fieldTypes, v->fieldCount);
+            }
+            FREE_ARRAY(EnumVariant, stmt->as.enum_.variants, stmt->as.enum_.variantCount);
+            break;
         case STMT_MATCH:
             freeExpr(stmt->as.match.value);
             for (int i = 0; i < stmt->as.match.caseCount; i++) {
                 if (stmt->as.match.cases[i].pattern != NULL) {
                     freeExpr(stmt->as.match.cases[i].pattern);
+                }
+                if (stmt->as.match.cases[i].destructureParams != NULL) {
+                    FREE_ARRAY(Token, stmt->as.match.cases[i].destructureParams,
+                               stmt->as.match.cases[i].destructureCount);
                 }
                 freeStmt(stmt->as.match.cases[i].body);
             }
@@ -609,6 +788,14 @@ void printTypeNode(TypeNode* node) {
         case TYPE_NODE_OPTIONAL:
             printTypeNode(node->as.optional.innerType);
             printf("?");
+            break;
+        case TYPE_NODE_GENERIC:
+            printf("%.*s<", node->as.generic.name.length, node->as.generic.name.start);
+            for (int i = 0; i < node->as.generic.typeArgCount; i++) {
+                if (i > 0) printf(", ");
+                printTypeNode(node->as.generic.typeArgs[i]);
+            }
+            printf(">");
             break;
         case TYPE_NODE_UNION:
             for (int i = 0; i < node->as.unionType.typeCount; i++) {
@@ -692,7 +879,13 @@ static void printExprIndent(Expr* expr, int indent) {
                        expr->as.lambda.params[i].start);
             }
             printf(")\n");
-            printExprIndent(expr->as.lambda.body, indent + 1);
+            if (expr->as.lambda.isBlockBody) {
+                printIndent(indent + 1);
+                printf("Body (block):\n");
+                printStmtIndent(expr->as.lambda.blockBody, indent + 2);
+            } else {
+                printExprIndent(expr->as.lambda.body, indent + 1);
+            }
             break;
         case EXPR_ARRAY:
             printf("Array: %d elements\n", expr->as.array.elementCount);
@@ -738,6 +931,24 @@ static void printExprIndent(Expr* expr, int indent) {
         case EXPR_SUPER:
             printf("Super: .%.*s\n", expr->as.super_.method.length,
                    expr->as.super_.method.start);
+            break;
+        case EXPR_MATCH:
+            printf("Match:\n");
+            printIndent(indent + 1);
+            printf("Value:\n");
+            printExprIndent(expr->as.match.matchValue, indent + 2);
+            for (int i = 0; i < expr->as.match.caseCount; i++) {
+                printIndent(indent + 1);
+                if (expr->as.match.cases[i].isWildcard) {
+                    printf("Case: _\n");
+                } else {
+                    printf("Case:\n");
+                    printExprIndent(expr->as.match.cases[i].pattern, indent + 2);
+                }
+                printIndent(indent + 2);
+                printf("Value:\n");
+                printExprIndent(expr->as.match.cases[i].value, indent + 3);
+            }
             break;
     }
 }
@@ -830,9 +1041,26 @@ static void printStmtIndent(Stmt* stmt, int indent) {
         case STMT_CLASS:
             printf("Class: %.*s", stmt->as.class_.name.length,
                    stmt->as.class_.name.start);
-            if (stmt->as.class_.hasSuperclass) {
-                printf(" extends %.*s", stmt->as.class_.superclass.length,
-                       stmt->as.class_.superclass.start);
+            if (stmt->as.class_.typeParamCount > 0) {
+                printf("<");
+                for (int i = 0; i < stmt->as.class_.typeParamCount; i++) {
+                    if (i > 0) printf(", ");
+                    printf("%.*s", stmt->as.class_.typeParams[i].length,
+                           stmt->as.class_.typeParams[i].start);
+                }
+                printf(">");
+            }
+            if (stmt->as.class_.superclassType != NULL) {
+                printf(" extends ");
+                printTypeNode(stmt->as.class_.superclassType);
+            }
+            if (stmt->as.class_.implementsCount > 0) {
+                printf(" implements ");
+                for (int i = 0; i < stmt->as.class_.implementsCount; i++) {
+                    if (i > 0) printf(", ");
+                    printf("%.*s", stmt->as.class_.implementsNames[i].length,
+                           stmt->as.class_.implementsNames[i].start);
+                }
             }
             printf("\n");
             for (int i = 0; i < stmt->as.class_.fieldCount; i++) {
@@ -846,6 +1074,39 @@ static void printStmtIndent(Stmt* stmt, int indent) {
                 printIndent(indent + 1);
                 printf("Method: %.*s\n", stmt->as.class_.methods[i].name.length,
                        stmt->as.class_.methods[i].name.start);
+            }
+            break;
+        case STMT_INTERFACE:
+            printf("Interface: %.*s\n", stmt->as.interface_.name.length,
+                   stmt->as.interface_.name.start);
+            for (int i = 0; i < stmt->as.interface_.methodCount; i++) {
+                printIndent(indent + 1);
+                printf("fn %.*s(...)\n", stmt->as.interface_.methods[i].name.length,
+                       stmt->as.interface_.methods[i].name.start);
+            }
+            break;
+        case STMT_TYPE_ALIAS:
+            printf("Type alias: %.*s = ", stmt->as.type_alias.name.length,
+                   stmt->as.type_alias.name.start);
+            printTypeNode(stmt->as.type_alias.target);
+            printf("\n");
+            break;
+        case STMT_ENUM:
+            printf("Enum: %.*s\n", stmt->as.enum_.name.length,
+                   stmt->as.enum_.name.start);
+            for (int i = 0; i < stmt->as.enum_.variantCount; i++) {
+                printIndent(indent + 1);
+                printf("Variant: %.*s", stmt->as.enum_.variants[i].name.length,
+                       stmt->as.enum_.variants[i].name.start);
+                if (stmt->as.enum_.variants[i].fieldCount > 0) {
+                    printf("(");
+                    for (int j = 0; j < stmt->as.enum_.variants[i].fieldCount; j++) {
+                        if (j > 0) printf(", ");
+                        printTypeNode(stmt->as.enum_.variants[i].fieldTypes[j]);
+                    }
+                    printf(")");
+                }
+                printf("\n");
             }
             break;
         case STMT_MATCH:

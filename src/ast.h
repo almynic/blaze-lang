@@ -21,6 +21,7 @@ typedef enum {
     TYPE_NODE_FUNCTION,     // fn(T, U) -> R
     TYPE_NODE_OPTIONAL,     // T?
     TYPE_NODE_UNION,        // T | U
+    TYPE_NODE_GENERIC,      // Identifier<T, U, ...>
 } TypeNodeKind;
 
 struct TypeNode {
@@ -45,6 +46,11 @@ struct TypeNode {
             TypeNode** types;
             int typeCount;
         } unionType;
+        struct {
+            Token name;             // Generic type identifier (e.g., Array, Map)
+            TypeNode** typeArgs;    // Type arguments (e.g., [T, U])
+            int typeArgCount;
+        } generic;
     } as;
 };
 
@@ -129,6 +135,8 @@ typedef struct {
     Expr** arguments;
     int argCount;
     Type* type;
+    TypeNode** explicitTypeArgs; // foo<int>(...) — NULL for normal calls
+    int explicitTypeArgCount;
 } CallExpr;
 
 typedef struct {
@@ -137,7 +145,9 @@ typedef struct {
     TypeNode** paramTypes;  // Parameter types (optional in lambdas)
     int paramCount;
     TypeNode* returnType;   // Return type (optional)
-    Expr* body;             // Expression body
+    Expr* body;             // Expression body (if !isBlockBody)
+    Stmt* blockBody;        // Block body (if isBlockBody)
+    bool isBlockBody;
     Type* type;
 } LambdaExpr;
 
@@ -197,6 +207,8 @@ typedef struct {
 // Case clause for match expressions
 typedef struct {
     Expr* pattern;          // Literal pattern (int, bool, string) or NULL for wildcard
+    Token* destructureParams; // Names for destructuring
+    int destructureCount;
     bool isWildcard;        // true if this is the _ pattern
     Expr* value;            // Expression to evaluate if pattern matches
 } ExprCaseClause;
@@ -249,7 +261,10 @@ typedef enum {
     STMT_FOR,               // for x in iter { }
     STMT_FUNCTION,          // fn name(params) -> T { }
     STMT_RETURN,            // return expr
-    STMT_CLASS,             // class Name extends Super { }
+    STMT_CLASS,             // class Name<T> extends Super { }
+    STMT_INTERFACE,         // interface Name { fn ... -> ... }
+    STMT_TYPE_ALIAS,        // type Name = TypeAnnotation
+    STMT_ENUM,              // enum Name { variants }
     STMT_MATCH,             // match expr { cases }
     STMT_TRY,               // try { } catch (e) { }
     STMT_THROW,             // throw expr
@@ -265,12 +280,23 @@ typedef struct {
     Expr* expression;
 } PrintStmt;
 
+typedef enum {
+    DESTRUCTURE_NONE,
+    DESTRUCTURE_ARRAY,
+    DESTRUCTURE_OBJECT
+} DestructureKind;
+
 typedef struct {
-    Token name;
+    Token name;             // Used for simple declarations
     TypeNode* typeAnnotation;
     Expr* initializer;
     bool isConst;
     Type* type;             // Resolved type
+    // Destructuring support
+    DestructureKind destructureKind;  // Type of destructuring
+    Token* destructureNames; // Variable names in [a, b, c] or {x, y} pattern
+    int destructureCount;   // Number of destructure names
+    int restIndex;          // Index of ...rest param for arrays (-1 if none)
 } VarStmt;
 
 typedef struct {
@@ -301,6 +327,8 @@ typedef struct {
 
 typedef struct {
     Token name;
+    Token* typeParams;      // Type parameter names
+    int typeParamCount;
     Token* params;
     TypeNode** paramTypes;
     int paramCount;
@@ -322,8 +350,29 @@ typedef struct {
 
 typedef struct {
     Token name;
-    Token superclass;       // Can be empty (length 0)
-    bool hasSuperclass;
+    Token* params;
+    TypeNode** paramTypes;
+    int paramCount;
+    TypeNode* returnType;
+} InterfaceMethodDecl;
+
+typedef struct {
+    Token name;
+    InterfaceMethodDecl* methods;
+    int methodCount;
+    Type* type;
+} InterfaceStmt;
+
+typedef struct {
+    Token name;
+    Token* typeParams;      // Generic type parameter names (NULL if typeParamCount == 0)
+    int typeParamCount;
+    TypeParamVariance* typeParamVariances; // Parallel to typeParams; NULL if typeParamCount == 0
+    Token* typeParamBounds; // Optional interface bound per type param (same count); length 0 = unbounded
+    TypeNode* superclassType;  // NULL if no extends (supports Foo or Foo<T>)
+    Token* implementsNames;    // Interface names (not owned beyond stmt lifetime)
+    int implementsCount;
+    Type* superclassResolved;  // Filled by type checker / lowering for compiler
     FieldDecl* fields;
     int fieldCount;
     FunctionStmt* methods;
@@ -331,9 +380,30 @@ typedef struct {
     Type* type;
 } ClassStmt;
 
+typedef struct {
+    Token keyword;          // 'type' token
+    Token name;
+    TypeNode* target;
+} TypeAliasStmt;
+
+typedef struct {
+    Token name;
+    TypeNode** fieldTypes;
+    int fieldCount;
+} EnumVariant;
+
+typedef struct {
+    Token name;
+    EnumVariant* variants;
+    int variantCount;
+    Type* type;
+} EnumStmt;
+
 // Case clause for match statement
 typedef struct {
     Expr* pattern;          // Literal pattern (int, bool, string) or NULL for wildcard
+    Token* destructureParams; // Names for destructuring (e.g. Variant(a, b))
+    int destructureCount;
     bool isWildcard;        // true if this is the _ pattern
     Stmt* body;             // Body to execute if pattern matches
 } CaseClause;
@@ -379,6 +449,9 @@ struct Stmt {
         FunctionStmt function;
         ReturnStmt return_;
         ClassStmt class_;
+        InterfaceStmt interface_;
+        TypeAliasStmt type_alias;
+        EnumStmt enum_;
         MatchStmt match;
         TryStmt try_;
         ThrowStmt throw_;
@@ -394,9 +467,10 @@ struct Stmt {
 TypeNode* newSimpleTypeNode(Token name);
 TypeNode* newArrayTypeNode(TypeNode* elementType, Token bracket);
 TypeNode* newFunctionTypeNode(TypeNode** paramTypes, int paramCount,
-                               TypeNode* returnType, Token fnToken);
+                                TypeNode* returnType, Token fnToken);
 TypeNode* newOptionalTypeNode(TypeNode* innerType, Token questionToken);
 TypeNode* newUnionTypeNode(TypeNode** types, int typeCount, Token pipeToken);
+TypeNode* newGenericTypeNode(Token name, TypeNode** typeArgs, int typeArgCount);
 void freeTypeNode(TypeNode* node);
 
 // Expressions
@@ -408,9 +482,12 @@ Expr* newVariableExpr(Token name);
 Expr* newAssignExpr(Token name, Expr* value);
 Expr* newLogicalExpr(Expr* left, Token op, Expr* right);
 Expr* newNullCoalesceExpr(Expr* left, Token op, Expr* right);
-Expr* newCallExpr(Expr* callee, Token paren, Expr** arguments, int argCount);
+Expr* newCallExpr(Expr* callee, Token paren, Expr** arguments, int argCount,
+                  TypeNode** explicitTypeArgs, int explicitTypeArgCount);
 Expr* newLambdaExpr(Token arrow, Token* params, TypeNode** paramTypes,
                     int paramCount, TypeNode* returnType, Expr* body);
+Expr* newLambdaBlockExpr(Token arrow, Token* params, TypeNode** paramTypes,
+                         int paramCount, TypeNode* returnType, Stmt* blockBody);
 Expr* newArrayExpr(Token bracket, Expr** elements, int elementCount);
 Expr* newSpreadExpr(Token dots, Expr* operand);
 Expr* newIndexExpr(Expr* object, Token bracket, Expr* index);
@@ -426,17 +503,27 @@ void freeExpr(Expr* expr);
 Stmt* newExpressionStmt(Expr* expression);
 Stmt* newPrintStmt(Token keyword, Expr* expression);
 Stmt* newVarStmt(Token name, TypeNode* type, Expr* initializer, bool isConst);
+Stmt* newArrayDestructureStmt(Token* names, int count, int restIndex, TypeNode* type, Expr* initializer, bool isConst);
+Stmt* newObjectDestructureStmt(Token* names, int count, TypeNode* type, Expr* initializer, bool isConst);
 Stmt* newBlockStmt(Stmt** statements, int count);
 Stmt* newIfStmt(Token keyword, Expr* condition, Stmt* thenBranch, Stmt* elseBranch);
 Stmt* newWhileStmt(Token keyword, Expr* condition, Stmt* body);
 Stmt* newForStmt(Token keyword, Token variable, TypeNode* varType,
                  Expr* iterable, Stmt* body);
-Stmt* newFunctionStmt(Token name, Token* params, TypeNode** paramTypes,
-                      int paramCount, TypeNode* returnType, Stmt* body);
+Stmt* newFunctionStmt(Token name, Token* typeParams, int typeParamCount,
+                       Token* params, TypeNode** paramTypes,
+                       int paramCount, TypeNode* returnType, Stmt* body);
 Stmt* newReturnStmt(Token keyword, Expr* value);
-Stmt* newClassStmt(Token name, Token superclass, bool hasSuperclass,
+Stmt* newClassStmt(Token name, Token* typeParams, int typeParamCount,
+                   TypeParamVariance* typeParamVariances,
+                   Token* typeParamBounds,
+                   TypeNode* superclassType,
+                   Token* implementsNames, int implementsCount,
                    FieldDecl* fields, int fieldCount,
                    FunctionStmt* methods, int methodCount);
+Stmt* newInterfaceStmt(Token name, InterfaceMethodDecl* methods, int methodCount);
+Stmt* newTypeAliasStmt(Token keyword, Token name, TypeNode* target);
+Stmt* newEnumStmt(Token name, EnumVariant* variants, int variantCount);
 Stmt* newMatchStmt(Token keyword, Expr* value, CaseClause* cases, int caseCount);
 Stmt* newTryStmt(Token keyword, Stmt* tryBody, Token catchVar, Stmt* catchBody, Stmt* finallyBody);
 Stmt* newThrowStmt(Token keyword, Expr* value);

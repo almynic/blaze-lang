@@ -110,6 +110,7 @@ static TokenType identifierType(Scanner* scanner) {
                 switch (scanner->start[1]) {
                     case 'l': return checkKeyword(scanner, 2, 2, "se", TOKEN_ELSE);
                     case 'x': return checkKeyword(scanner, 2, 5, "tends", TOKEN_EXTENDS);
+                    case 'n': return checkKeyword(scanner, 2, 2, "um", TOKEN_ENUM);
                 }
             }
             break;
@@ -128,10 +129,17 @@ static TokenType identifierType(Scanner* scanner) {
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {
                     case 'f': return checkKeyword(scanner, 2, 0, "", TOKEN_IF);
-                    case 'm': return checkKeyword(scanner, 2, 4, "port", TOKEN_IMPORT);
+                    case 'm':
+                        if (scanner->current - scanner->start == 10) {
+                            return checkKeyword(scanner, 0, 10, "implements", TOKEN_IMPLEMENTS);
+                        }
+                        return checkKeyword(scanner, 2, 4, "port", TOKEN_IMPORT);
                     case 'n':
                         if (scanner->current - scanner->start == 2) {
                             return TOKEN_IN;
+                        }
+                        if (scanner->current - scanner->start == 9) {
+                            return checkKeyword(scanner, 0, 9, "interface", TOKEN_INTERFACE);
                         }
                         return checkKeyword(scanner, 2, 1, "t", TOKEN_TYPE_INT);
                 }
@@ -147,6 +155,11 @@ static TokenType identifierType(Scanner* scanner) {
             }
             break;
         case 'n': return checkKeyword(scanner, 1, 2, "il", TOKEN_NIL);
+        case 'o':
+            if (scanner->current - scanner->start > 1 && scanner->start[1] == 'u') {
+                return checkKeyword(scanner, 0, 3, "out", TOKEN_OUT);
+            }
+            break;
         case 'p': return checkKeyword(scanner, 1, 4, "rint", TOKEN_PRINT);
         case 'r': return checkKeyword(scanner, 1, 5, "eturn", TOKEN_RETURN);
         case 's':
@@ -160,6 +173,8 @@ static TokenType identifierType(Scanner* scanner) {
         case 't':
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {
+                    case 'y':
+                        return checkKeyword(scanner, 2, 2, "pe", TOKEN_TYPE_ALIAS);
                     case 'h':
                         if (scanner->current - scanner->start > 2) {
                             switch (scanner->start[2]) {
@@ -350,17 +365,23 @@ const char* tokenTypeName(TokenType type) {
         case TOKEN_WHILE:         return "WHILE";
         case TOKEN_FOR:           return "FOR";
         case TOKEN_IN:            return "IN";
+        case TOKEN_OUT:           return "OUT";
         case TOKEN_CLASS:         return "CLASS";
+        case TOKEN_INTERFACE:     return "INTERFACE";
+        case TOKEN_IMPLEMENTS:    return "IMPLEMENTS";
         case TOKEN_EXTENDS:       return "EXTENDS";
         case TOKEN_THIS:          return "THIS";
         case TOKEN_SUPER:         return "SUPER";
-        case TOKEN_IMPORT:        return "IMPORT";
-        case TOKEN_MODULE:        return "MODULE";
-        case TOKEN_MATCH:         return "MATCH";
+        case TOKEN_IMPORT:      return "IMPORT";
+        case TOKEN_MODULE:      return "MODULE";
+        case TOKEN_ENUM:        return "ENUM";
+        case TOKEN_MATCH:       return "MATCH";
+
         case TOKEN_TRUE:          return "TRUE";
         case TOKEN_FALSE:         return "FALSE";
         case TOKEN_NIL:           return "NIL";
         case TOKEN_PRINT:         return "PRINT";
+        case TOKEN_TYPE_ALIAS:    return "TYPE_ALIAS";
         case TOKEN_TYPE_INT:      return "TYPE_INT";
         case TOKEN_TYPE_FLOAT:    return "TYPE_FLOAT";
         case TOKEN_TYPE_BOOL:     return "TYPE_BOOL";
