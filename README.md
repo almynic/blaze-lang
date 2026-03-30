@@ -17,11 +17,14 @@
 - ✅ Classes, closures, and inheritance
 - ✅ Pattern matching and exception handling
 - ✅ Module system with standard library
+- ✅ Generic functions (`fn f<T>(...)`) and explicit calls (`f<int>(...)`)
+- ✅ Generic classes (`class Box<T> { ... }`) with compile-time monomorphization and `type` aliases
+- ✅ Lambdas with typed parameters and block bodies (`(x: int) => { ... }`)
 - ✅ Array spread operator for concatenation
 - ✅ Interactive REPL with readline support
 - ✅ Excellent developer experience (colored errors, helpful hints)
 
-**Codebase**: ~11,824 lines of C | ~481 lines of Blaze stdlib
+**Codebase**: ~12,000+ lines of C | ~200+ lines of Blaze stdlib (`std/array.blaze` and friends)
 
 ---
 
@@ -101,6 +104,12 @@ import { map, filter } from "std/array"
 let numbers = [1, 2, 3, 4, 5]
 let doubled = map(numbers, (x) => x * 2)
 let evens = filter(numbers, (x) => x % 2 == 0)
+
+// Generic function
+fn identity<T>(x: T) -> T {
+    return x
+}
+let n = identity<int>(42)
 ```
 
 ---
@@ -112,8 +121,8 @@ let evens = filter(numbers, (x) => x % 2 == 0)
 - **Static typing** with powerful type inference
 - **Union types** (`int | string`) and **optional types** (`int?`)
 - **Type narrowing** in conditionals for safe type refinement
-- **Classes** with inheritance and super calls
-- **Closures** and **lambda expressions** with type inference
+- **Classes** with inheritance and super calls; **generic classes** with explicit instantiations (e.g. `Box<int>`)
+- **Closures** and **lambda expressions** (typed params, optional return type, expression or block body)
 - **Match expressions** for pattern matching
 - **Exception handling** (try/catch/finally)
 - **Module system** with selective imports
@@ -136,9 +145,10 @@ let evens = filter(numbers, (x) => x % 2 == 0)
 
 ### Performance
 
-- **Optimizing compiler** with constant folding and dead code elimination
+- **Optimizing compiler** with constant folding, dead code elimination, and tail call optimization
 - **String interning** for fast comparisons
 - **Type-specialized bytecode** for integers and floats
+- **NaN-boxed values** (8-byte `uint64_t` `Value`; details in [ARCHITECTURE.md](ARCHITECTURE.md#value-representation))
 - **Mark-and-sweep garbage collection**
 
 ---
@@ -329,15 +339,18 @@ blaze> print(double(21))
 Run the test suite:
 
 ```bash
-# Run comprehensive tests
+# Built-in regression suite (many phases: arithmetic, loops, classes, generics, REPL notes, …)
+./build/blaze --test
+
+# Single-file examples
 ./build/blaze examples/comprehensive_test.blaze
 
-# Run specific feature tests
+# Individual feature tests
 ./build/blaze tests/spread_operator.blaze
 ./build/blaze tests/optional_types.blaze
 ```
 
-All tests pass successfully! ✅
+The `--test` runner repeatedly compiles and executes snippets in a fresh VM; use it after VM or compiler changes to catch integration issues early.
 
 ---
 
@@ -351,8 +364,8 @@ Source Code → Scanner → Parser → AST → Type Checker → Compiler → Byt
 
 ### Virtual Machine
 
-- **Stack-based bytecode interpreter** with 65 opcodes
-- **Mark-and-sweep garbage collection**
+- **Stack-based bytecode interpreter** with 67 opcodes
+- **Mark-and-sweep garbage collection** (roots include the value stack, frames, globals, open upvalues, and the active compiler chain during compilation)
 - **Type-specialized arithmetic** opcodes (int/float/mixed)
 - **String interning** for efficient comparison
 - **Optimizing compiler** with constant folding and dead code elimination
@@ -380,12 +393,11 @@ All core language features are implemented and tested:
 
 Optional features that could be added:
 
-- Generic types (`Array<T>`, `Map<K,V>`)
+- Richer stdlib generics (e.g. nominal `Array<T>`-style APIs where the surface area grows)
 - Debug mode with breakpoints
-- Additional optimizations (tail call optimization, NaN boxing)
-- Destructuring for arrays and objects
+- Interfaces / protocols, expanded enum ADTs
 
-For more details, see [ROADMAP.md](ROADMAP.md).
+User-defined generic **classes** (`class Box<T> { ... }`) with monomorphization, **generic functions**, destructuring, tail calls, NaN boxing, and loop unrolling are already implemented. For more detail, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -414,4 +426,4 @@ Built with inspiration from:
 
 ---
 
-**Last Updated**: March 28, 2026
+**Last Updated**: March 30, 2026

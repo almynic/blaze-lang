@@ -32,7 +32,7 @@ Source Code → Scanner → Parser → AST → Type Checker → Compiler → Byt
 - **Type System**: Static with inference
 - **Memory Management**: Mark-and-sweep garbage collection
 - **Execution**: Stack-based virtual machine
-- **Codebase Size**: ~11,824 lines of C, ~481 lines of Blaze stdlib
+- **Codebase Size**: ~12,000+ lines of C; standard library spread across `std/*.blaze` (including generic-style `std/array.blaze`)
 
 ---
 
@@ -87,7 +87,11 @@ The parser constructs an Abstract Syntax Tree (AST) from tokens using Pratt pars
 **AST Node Types**:
 - **Expressions**: 20 types (literals, binary, unary, call, lambda, match, etc.)
 - **Statements**: 14 types (var, function, class, if, while, for, try, etc.)
-- **Type Nodes**: 5 types (simple, array, function, optional, union)
+- **Type Nodes**: 6 kinds — simple, array, function, optional, union, **generic** (`Name<Args...>`)
+
+**Lambdas**:
+- Parsed speculatively after `(`: parameter list may include `name: Type`, optional `-> ReturnType` before `=>`, and body as **expression** or **`{` block `}`** (block body uses `newLambdaBlockExpr`).
+- Explicit **generic call** form `callee<TypeArgs>(args)` is recognized when `<` begins a type list (not comparison).
 
 ---
 
@@ -106,7 +110,7 @@ The AST represents the program structure as a tree of nodes.
 - `EXPR_LOGICAL` - Logical operations (`&&`, `||`)
 - `EXPR_NULL_COALESCE` - Null coalescing (`a ?? b`)
 - `EXPR_CALL` - Function calls
-- `EXPR_LAMBDA` - Lambda expressions
+- `EXPR_LAMBDA` - Lambda expressions (expression or block body; optional param/return types)
 - `EXPR_ARRAY` - Array literals
 - `EXPR_SPREAD` - Spread operator (`...arr`)
 - `EXPR_INDEX` - Array indexing
@@ -143,6 +147,8 @@ The type checker performs semantic analysis and type inference.
 **Type System Features**:
 - **Primitive Types**: `int`, `float`, `bool`, `string`, `nil`
 - **Composite Types**: Arrays, functions, classes, unions, optionals
+- **Type parameters** (functions): `TYPE_TYPE_PARAM` — placeholder types for `T` in `fn f<T>(...)`, resolved in scope during checking; used with conservative rules for arithmetic and comparisons inside generic bodies
+- **Generic annotations**: `TYPE_GENERIC_INST` exists for future instantiated types; generic type nodes in the AST may still resolve to `unknown` where full checking is not implemented yet
 - **Type Inference**: Bidirectional type inference for variables and functions
 - **Type Narrowing**: Automatic refinement in conditionals
 - **Union Types**: `int | string`
@@ -190,7 +196,7 @@ The compiler generates bytecode for the virtual machine.
 
 ### Architecture
 
-The Blaze VM is a **stack-based bytecode interpreter** with 65 opcodes.
+The Blaze VM is a **stack-based bytecode interpreter** with **67** opcodes (see `OpCode` in `src/chunk.h`).
 
 **VM Components**:
 - **Value Stack**: 256 slots for operands and temporaries
@@ -245,8 +251,9 @@ Type-specialized for performance:
 - `OP_JUMP_IF_TRUE` - Jump if true
 - `OP_LOOP` - Loop back
 
-#### Functions (4 opcodes)
+#### Functions (5 opcodes)
 - `OP_CALL` - Call function
+- `OP_TAIL_CALL` - Tail call (reuse frame)
 - `OP_CLOSURE` - Create closure
 - `OP_CLOSE_UPVALUE` - Close upvalue
 - `OP_RETURN` - Return from function
@@ -261,13 +268,14 @@ Type-specialized for performance:
 - `OP_GET_SUPER` - Get superclass method
 - `OP_SUPER_INVOKE` - Call superclass method
 
-#### Arrays (6 opcodes)
+#### Arrays (7 opcodes)
 - `OP_ARRAY` - Create array with N elements
 - `OP_INDEX_GET` - Get array element (`arr[i]`)
 - `OP_INDEX_SET` - Set array element (`arr[i] = x`)
 - `OP_ARRAY_LENGTH` - Get array length
 - `OP_RANGE` - Create range array (`start..end`)
 - `OP_ARRAY_CONCAT` - Concatenate two arrays
+- `OP_ARRAY_SLICE` - Slice array (`slice` / rest destructuring)
 
 #### Exceptions (3 opcodes)
 - `OP_TRY` - Begin try block
@@ -372,8 +380,10 @@ Blaze uses a **mark-and-sweep garbage collector**.
 - Value stack
 - Call frames
 - Global variables
-- Compiler constants
+- **Active compiler chain** (`markCompilerRoots`) while a function or script is being compiled
 - Open upvalues
+
+**Compile-time boundary**: When a top-level script finishes compiling, the active compiler is torn down (`current` is cleared). The compiled `ObjFunction` is not yet reachable from globals. Before the AST is freed, the VM **must** push that function onto the value stack so a GC triggered during AST teardown cannot collect the bytecode chunk while it is still needed for execution (`interpretInternal` in `src/vm.c`).
 
 **GC Triggers**:
 - After allocating certain number of bytes
@@ -382,25 +392,22 @@ Blaze uses a **mark-and-sweep garbage collector**.
 
 ### Value Representation
 
-**Tagged Union** (not NaN-boxed):
-```c
-typedef struct {
-    ValueType type;
-    union {
-        bool boolean;
-        int64_t integer;
-        double floatNum;
-        Obj* obj;
-    } as;
-} Value;
-```
+**NaN boxing** — implementation in [`src/value.h`](src/value.h). `Value` is a single **`uint64_t`** (8 bytes on all supported platforms).
 
-**Value Types**:
-- `VAL_BOOL` - Boolean
-- `VAL_NIL` - Nil
-- `VAL_INT` - 64-bit integer
-- `VAL_FLOAT` - 64-bit float
-- `VAL_OBJ` - Heap object pointer
+- **IEEE doubles**: Non–quiet-NaN `double` values are stored as their raw bit patterns (the common case for float-heavy code).
+- **Tagged values**: A quiet-NaN bit pattern plus a 3-bit type tag and 48-bit payload encode nil, booleans, integers, and object pointers without a separate runtime `ValueType` discriminant.
+
+**Payload kinds** (see macros in `value.h`):
+
+| Kind | Detection | Notes |
+|------|-----------|--------|
+| Nil | `IS_NIL` | Single `NIL_VAL` |
+| Bool | `IS_BOOL` | `FALSE_VAL` / `TRUE_VAL` |
+| Int | `IS_INT` | 48-bit signed range (±2^47) |
+| Float | `IS_FLOAT` | Any other valid double bits |
+| Object | `IS_OBJ` | 48-bit pointer payload |
+
+This matches the README and CHANGELOG: stack slots and constant pools use 8 bytes per value instead of a larger tagged struct.
 
 ### Object Types
 
@@ -578,7 +585,8 @@ blaze-lang/
 ├── CMakeLists.txt          # Build configuration
 ├── CHANGELOG.md            # Version history
 ├── ROADMAP.md              # Future plans
-└── ARCHITECTURE.md         # This file
+├── ARCHITECTURE.md         # This file
+└── .cursor/rules/          # Optional Cursor IDE rules for contributors
 ```
 
 ---
@@ -596,7 +604,7 @@ blaze-lang/
 
 ### Space Complexity
 
-- **Value**: 16 bytes (type tag + union)
+- **Value**: 8 bytes (NaN-boxed `uint64_t`; see [`src/value.h`](src/value.h) and CHANGELOG)
 - **Call frame**: ~40 bytes
 - **Stack**: 256 values max (~4KB)
 - **Heap objects**: Varies by type
@@ -613,4 +621,4 @@ blaze-lang/
 
 ---
 
-**Last Updated**: March 28, 2026
+**Last Updated**: March 30, 2026
