@@ -1,6 +1,7 @@
 #include "value.h"
 #include "memory.h"
 #include "object.h"
+#include <string.h>
 
 void initValueArray(ValueArray* array) {
     array->values = NULL;
@@ -57,6 +58,13 @@ bool valuesEqual(Value a, Value b) {
     // Mixed int/float comparison
     if (IS_NUMBER(a) && IS_NUMBER(b)) {
         return AS_NUMBER(a) == AS_NUMBER(b);
+    }
+
+    if (IS_STRING(a) && IS_STRING(b)) {
+        ObjString* sa = AS_STRING(a);
+        ObjString* sb = AS_STRING(b);
+        return sa->length == sb->length &&
+               memcmp(sa->chars, sb->chars, (size_t)sa->length) == 0;
     }
 
     return false;

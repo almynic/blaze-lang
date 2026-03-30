@@ -111,6 +111,7 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
 struct ObjClass {
     Obj obj;
     ObjString* name;
+    Table fields;   // Enum variants (and future class-level values); methods stay separate
     Table methods;
 };
 

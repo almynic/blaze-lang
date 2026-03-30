@@ -2,6 +2,7 @@
 #include "memory.h"
 #include "object.h"
 #include "types.h"
+#include <stdio.h>
 #include <string.h>
 
 // Current compiler (for nested functions)
@@ -998,84 +999,94 @@ static void compileMatchExpr(Expr* expr) {
     for (int i = 0; i < match->caseCount; i++) {
         ExprCaseClause* c = &match->cases[i];
 
-        beginScope();
-
         if (c->isWildcard) {
+            beginScope();
             // Wildcard: pop the value and evaluate the result expression
             emitByte(expr->line, OP_POP);
             compileExpr(c->value);
+            endScope(expr->line);
             // No need to jump - wildcard should be last
         } else {
-            // Duplicate the value for comparison
             emitByte(expr->line, OP_DUP);
 
-            if (c->destructureCount > 0) {
-                // Enum destructuring: Variant(a, b)
-                // 1. Check if the value is an instance of the enum
-                // (Skip for now, just check tag)
+            bool callPattern = (c->pattern != NULL && c->pattern->kind == EXPR_CALL &&
+                                c->pattern->as.call.callee->kind == EXPR_VARIABLE);
+            bool destructurePattern = c->destructureCount > 0;
 
-                // 2. Get the tag property
+            if (callPattern) {
+                CallExpr* call = &c->pattern->as.call;
                 ObjString* tagStr = copyString("$tag", 4);
                 emitBytes(expr->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
-
-                // 3. Compare with pattern (which should be the Variant constructor/tag)
-                // Pattern in Variant(a, b) is Variant, which we bound as a property of Enum class.
-                // But here we need to compare against the tag string.
-                // Wait, if pattern is a variable, it might resolve to the constructor function.
-                // Let's assume for now the pattern evaluates to the Enum variant (which has $tag)
+                VariableExpr* callee = &call->callee->as.variable;
+                ObjString* wantTag = copyString(callee->name.start, callee->name.length);
+                emitBytes(expr->line, OP_CONSTANT, makeConstant(OBJ_VAL(wantTag)));
+                emitByte(expr->line, OP_EQUAL);
+            } else if (destructurePattern) {
+                ObjString* tagStr = copyString("$tag", 4);
+                emitBytes(expr->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
                 compileExpr(c->pattern);
                 emitBytes(expr->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
-
                 emitByte(expr->line, OP_EQUAL);
             } else {
-                // Regular comparison
                 compileExpr(c->pattern);
                 emitByte(expr->line, OP_EQUAL);
             }
 
-            // Jump to next case if not equal
             int nextCase = emitJump(expr->line, OP_JUMP_IF_FALSE);
-            // Pop the comparison result (true)
             emitByte(expr->line, OP_POP);
 
-            if (c->destructureCount > 0) {
-                // Destructure: bind fields to locals
-                // Value is still on stack (under the tag if we didn't pop it, but we did)
-                // Wait, OP_DUP was used, then GET_PROPERTY (pops instance, pushes tag).
-                // So tag was on stack. OP_EQUAL popped tag and pattern result.
-                // So now top of stack is the duplicated value? No, OP_DUP was at the very beginning.
-                // Stack: [OriginalValue, DuplicatedValue]
-                // After GET_PROPERTY($tag): [OriginalValue, TagValue]
-                // After compileExpr(pattern): [OriginalValue, TagValue, PatternResult]
-                // If pattern is a variant: [OriginalValue, TagValue, VariantInstance]
-                // Need to get tag from VariantInstance: [OriginalValue, TagValue, VariantTag]
-                // After OP_EQUAL: [OriginalValue, ComparisonResult]
-                // After JUMP_IF_FALSE & POP: [OriginalValue]
+            beginScope();
 
-                for (int j = 0; j < c->destructureCount; j++) {
-                    emitByte(expr->line, OP_DUP);
-                    char fieldName[16];
-                    snprintf(fieldName, sizeof(fieldName), "$%d", j);
-                    emitBytes(expr->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
-                    addLocal(c->destructureParams[j], NULL, false);
+            if (callPattern || destructurePattern) {
+                int subjectLocal = current->localCount;
+                Token subTok;
+                subTok.start = "";
+                subTok.length = 0;
+                subTok.line = expr->line;
+                addLocal(subTok, NULL, false);
+                current->locals[subjectLocal].depth = current->scopeDepth;
+
+                if (callPattern) {
+                    CallExpr* call = &c->pattern->as.call;
+                    for (int j = 0; j < call->argCount; j++) {
+                        Expr* arg = call->arguments[j];
+                        if (arg->kind != EXPR_VARIABLE) {
+                            compileError(expr->line, "Match pattern arguments must be variable names.");
+                            break;
+                        }
+                        emitBytes(expr->line, OP_GET_LOCAL, (uint8_t)subjectLocal);
+                        char fieldName[16];
+                        snprintf(fieldName, sizeof(fieldName), "$%d", j);
+                        emitBytes(expr->line, OP_GET_PROPERTY,
+                                  makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                        addLocal(arg->as.variable.name, NULL, false);
+                        current->locals[current->localCount - 1].depth = current->scopeDepth;
+                    }
                 }
+                if (destructurePattern) {
+                    for (int j = 0; j < c->destructureCount; j++) {
+                        emitBytes(expr->line, OP_GET_LOCAL, (uint8_t)subjectLocal);
+                        char fieldName[16];
+                        snprintf(fieldName, sizeof(fieldName), "$%d", j);
+                        emitBytes(expr->line, OP_GET_PROPERTY,
+                                  makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                        addLocal(c->destructureParams[j], NULL, false);
+                        current->locals[current->localCount - 1].depth = current->scopeDepth;
+                    }
+                }
+            } else {
+                emitByte(expr->line, OP_POP);
             }
 
-            // Pop the duplicated value
-            emitByte(expr->line, OP_POP);
-
-            // Compile the result expression (leaves value on stack)
             compileExpr(c->value);
 
-            // Jump to end
+            endScope(expr->line);
             endJumps[endJumpCount++] = emitJump(expr->line, OP_JUMP);
             // Patch next case jump
             patchJump(nextCase);
             // Pop the comparison result (false)
             emitByte(expr->line, OP_POP);
         }
-
-        endScope(expr->line);
     }
 
     // If no wildcard and no match, pop the value and push nil
@@ -1591,60 +1602,96 @@ static void compileMatchStmt(Stmt* stmt) {
     for (int i = 0; i < matchStmt->caseCount; i++) {
         CaseClause* c = &matchStmt->cases[i];
 
-        beginScope();
-
         if (c->isWildcard) {
+            beginScope();
             // Wildcard: pop the value and execute body
             emitByte(stmt->line, OP_POP);
             compileStmt(c->body);
+            endScope(stmt->line);
             // No need to jump - wildcard should be last
         } else {
-            // Duplicate the value for comparison
             emitByte(stmt->line, OP_DUP);
 
-            if (c->destructureCount > 0) {
-                // Enum destructuring
+            bool callPattern = (c->pattern != NULL && c->pattern->kind == EXPR_CALL &&
+                                c->pattern->as.call.callee->kind == EXPR_VARIABLE);
+            bool destructurePattern = c->destructureCount > 0;
+
+            if (callPattern) {
+                CallExpr* call = &c->pattern->as.call;
+                ObjString* tagStr = copyString("$tag", 4);
+                emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+                VariableExpr* callee = &call->callee->as.variable;
+                ObjString* wantTag = copyString(callee->name.start, callee->name.length);
+                emitBytes(stmt->line, OP_CONSTANT, makeConstant(OBJ_VAL(wantTag)));
+                emitByte(stmt->line, OP_EQUAL);
+            } else if (destructurePattern) {
                 ObjString* tagStr = copyString("$tag", 4);
                 emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
                 compileExpr(c->pattern);
                 emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
                 emitByte(stmt->line, OP_EQUAL);
             } else {
-                // Compile the pattern
                 compileExpr(c->pattern);
-                // Compare
                 emitByte(stmt->line, OP_EQUAL);
             }
 
-            // Jump to next case if not equal
             int nextCase = emitJump(stmt->line, OP_JUMP_IF_FALSE);
-            // Pop the comparison result (true)
             emitByte(stmt->line, OP_POP);
 
-            if (c->destructureCount > 0) {
-                // Destructure
-                for (int j = 0; j < c->destructureCount; j++) {
-                    emitByte(stmt->line, OP_DUP);
-                    char fieldName[16];
-                    snprintf(fieldName, sizeof(fieldName), "$%d", j);
-                    emitBytes(stmt->line, OP_GET_PROPERTY, makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
-                    addLocal(c->destructureParams[j], NULL, false);
+            // Bindings and body run only on the true path; a separate scope ensures
+            // endScope POPs do not run after a failed branch (which would corrupt the stack).
+            beginScope();
+
+            if (callPattern || destructurePattern) {
+                int subjectLocal = current->localCount;
+                Token subTok;
+                subTok.start = "";
+                subTok.length = 0;
+                subTok.line = stmt->line;
+                addLocal(subTok, NULL, false);
+                current->locals[subjectLocal].depth = current->scopeDepth;
+
+                if (callPattern) {
+                    CallExpr* call = &c->pattern->as.call;
+                    for (int j = 0; j < call->argCount; j++) {
+                        Expr* arg = call->arguments[j];
+                        if (arg->kind != EXPR_VARIABLE) {
+                            compileError(stmt->line, "Match pattern arguments must be variable names.");
+                            break;
+                        }
+                        emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)subjectLocal);
+                        char fieldName[16];
+                        snprintf(fieldName, sizeof(fieldName), "$%d", j);
+                        emitBytes(stmt->line, OP_GET_PROPERTY,
+                                  makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                        addLocal(arg->as.variable.name, NULL, false);
+                        current->locals[current->localCount - 1].depth = current->scopeDepth;
+                    }
                 }
+                if (destructurePattern) {
+                    for (int j = 0; j < c->destructureCount; j++) {
+                        emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)subjectLocal);
+                        char fieldName[16];
+                        snprintf(fieldName, sizeof(fieldName), "$%d", j);
+                        emitBytes(stmt->line, OP_GET_PROPERTY,
+                                  makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                        addLocal(c->destructureParams[j], NULL, false);
+                        current->locals[current->localCount - 1].depth = current->scopeDepth;
+                    }
+                }
+            } else {
+                emitByte(stmt->line, OP_POP);
             }
 
-            // Pop the duplicated value
-            emitByte(stmt->line, OP_POP);
-            // Execute the body
             compileStmt(c->body);
-            // Jump to end
+            // Pop binding locals on the true path before jumping out of the arm.
+            endScope(stmt->line);
             endJumps[endJumpCount++] = emitJump(stmt->line, OP_JUMP);
             // Patch next case jump
             patchJump(nextCase);
             // Pop the comparison result (false)
             emitByte(stmt->line, OP_POP);
         }
-
-        endScope(stmt->line);
     }
 
     // If no wildcard and no match, pop the value
@@ -1717,42 +1764,50 @@ static void compileThrowStmt(Stmt* stmt) {
     emitByte(stmt->line, OP_THROW);
 }
 
+// Load enum class inside nested function (locals / upvalues / global).
+static void emitLoadEnumClassRef(EnumStmt* enumStmt, int line) {
+    Token* name = &enumStmt->name;
+    int loc = resolveLocal(current, name);
+    if (loc != -1) {
+        emitBytes(line, OP_GET_LOCAL, (uint8_t)loc);
+    } else if ((loc = resolveUpvalue(current, name)) != -1) {
+        emitBytes(line, OP_GET_UPVALUE, (uint8_t)loc);
+    } else {
+        ObjString* os = copyString(name->start, name->length);
+        emitBytes(line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(os)));
+    }
+}
+
 static void compileEnumStmt(Stmt* stmt) {
     EnumStmt* enumStmt = &stmt->as.enum_;
 
-    // Create enum name constant
     ObjString* enumName = copyString(enumStmt->name.start, enumStmt->name.length);
     uint8_t nameConstant = makeConstant(OBJ_VAL(enumName));
 
-    // We'll treat enums like classes for now
     emitBytes(stmt->line, OP_CLASS, nameConstant);
 
-    // Define the enum globally (or locally)
-    if (current->scopeDepth > 0) {
-        addLocal(enumStmt->name, enumStmt->type, false);
-    } else {
+    bool enumGlobal = (current->scopeDepth <= 1 && current->type == FN_TYPE_SCRIPT);
+    if (enumGlobal) {
         emitBytes(stmt->line, OP_DEFINE_GLOBAL, nameConstant);
+    } else {
+        addLocal(enumStmt->name, enumStmt->type, false);
     }
 
-    // Get the enum back on the stack for variant binding
-    if (current->scopeDepth > 0) {
+    if (enumGlobal) {
+        emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+    } else {
         int slot = resolveLocal(current, &enumStmt->name);
         emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)slot);
-    } else {
-        emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
     }
 
-    // Compile variants
     for (int i = 0; i < enumStmt->variantCount; i++) {
         EnumVariant* v = &enumStmt->variants[i];
         ObjString* variantName = copyString(v->name.start, v->name.length);
         uint8_t variantNameConst = makeConstant(OBJ_VAL(variantName));
 
-        // Duplicate enum class for SET_PROPERTY
         emitByte(stmt->line, OP_DUP);
 
         if (v->fieldCount > 0) {
-            // Variant with fields: compile a constructor function
             Compiler variantCompiler;
             initCompiler(&variantCompiler, current, FN_TYPE_FUNCTION);
             beginScope();
@@ -1760,62 +1815,73 @@ static void compileEnumStmt(Stmt* stmt) {
             current->function->name = variantName;
             current->function->arity = v->fieldCount;
 
-            // 1. Get the Enum class (it's at scopeDepth 0 or a local)
-            // Resolve it in the enclosing compiler
-            int enumSlot = resolveLocal(current->enclosing, &enumStmt->name);
-            if (enumSlot != -1) {
-                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)enumSlot);
-            } else {
-                emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+            for (int j = 0; j < v->fieldCount; j++) {
+                char buf[16];
+                int len = snprintf(buf, sizeof(buf), "$%d", j);
+                ObjString* ps = copyString(buf, len);
+                Token paramTok;
+                paramTok.start = ps->chars;
+                paramTok.length = len;
+                paramTok.line = v->name.line;
+                addLocal(paramTok, NULL, false);
             }
 
-            // 2. Instantiate (OP_CALL with 0 args on the class)
+            emitLoadEnumClassRef(enumStmt, stmt->line);
             emitBytes(stmt->line, OP_CALL, 0);
 
-            // 3. Set variant name property ($tag)
-            emitByte(stmt->line, OP_DUP);
-            ObjString* tagStr = copyString("$tag", 4);
-            emitBytes(stmt->line, OP_CONSTANT, makeConstant(OBJ_VAL(variantName)));
-            emitBytes(stmt->line, OP_SET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
-            emitByte(stmt->line, OP_POP); // Pop the name, keep instance
+            // Property name / value constants must live in the variant function's chunk.
+            uint8_t tagKeyIn = makeConstant(OBJ_VAL(copyString("$tag", 4)));
+            uint8_t tagValIn = makeConstant(OBJ_VAL(variantName));
 
-            // 4. Set fields ($0, $1, ...)
+            emitByte(stmt->line, OP_DUP);
+            emitBytes(stmt->line, OP_CONSTANT, tagValIn);
+            emitBytes(stmt->line, OP_SET_PROPERTY, tagKeyIn);
+            emitByte(stmt->line, OP_POP);
+
             for (int j = 0; j < v->fieldCount; j++) {
                 emitByte(stmt->line, OP_DUP);
-                // Get parameter j
-                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)j);
-                // Field name is its index: $0, $1, etc.
-                char fieldName[16];
-                snprintf(fieldName, sizeof(fieldName), "$%d", j);
-                emitBytes(stmt->line, OP_SET_PROPERTY, makeConstant(OBJ_VAL(copyString(fieldName, (int)strlen(fieldName)))));
+                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)(j + 1));
+                char fieldBuf[16];
+                int flen = snprintf(fieldBuf, sizeof(fieldBuf), "$%d", j);
+                ObjString* fs = copyString(fieldBuf, flen);
+                uint8_t fieldKeyIn = makeConstant(OBJ_VAL(fs));
+                emitBytes(stmt->line, OP_SET_PROPERTY, fieldKeyIn);
                 emitByte(stmt->line, OP_POP);
             }
 
-            // 5. Return instance
             emitByte(stmt->line, OP_RETURN);
 
             ObjFunction* function = endCompiler(stmt->line);
             emitBytes(stmt->line, OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+            for (int u = 0; u < function->upvalueCount; u++) {
+                emitByte(stmt->line, variantCompiler.upvalues[u].isLocal ? 1 : 0);
+                emitByte(stmt->line, variantCompiler.upvalues[u].index);
+            }
         } else {
-            // Variant without fields: just a pre-instantiated instance
-            // 1. Duplicate enum class to call it
+            uint8_t tagKeyUnit = makeConstant(OBJ_VAL(copyString("$tag", 4)));
             emitByte(stmt->line, OP_DUP);
-            // 2. Instantiate
             emitBytes(stmt->line, OP_CALL, 0);
-            // 3. Set tag
             emitByte(stmt->line, OP_DUP);
-            ObjString* tagStr = copyString("$tag", 4);
-            emitBytes(stmt->line, OP_CONSTANT, makeConstant(OBJ_VAL(variantName)));
-            emitBytes(stmt->line, OP_SET_PROPERTY, makeConstant(OBJ_VAL(tagStr)));
+            emitBytes(stmt->line, OP_CONSTANT, variantNameConst);
+            emitBytes(stmt->line, OP_SET_PROPERTY, tagKeyUnit);
             emitByte(stmt->line, OP_POP);
         }
 
-        // 6. Bind constructor or instance as property of Enum class
         emitBytes(stmt->line, OP_SET_PROPERTY, variantNameConst);
-        emitByte(stmt->line, OP_POP); // Pop the result of SET_PROPERTY
+        emitByte(stmt->line, OP_POP);
+
+        // Mirror typechecker: each variant name is a top-level binding (global or local)
+        // so match patterns like `None` and call patterns like `Some(x)` resolve at runtime.
+        emitByte(stmt->line, OP_DUP);
+        emitBytes(stmt->line, OP_GET_PROPERTY, variantNameConst);
+        if (enumGlobal) {
+            emitBytes(stmt->line, OP_DEFINE_GLOBAL, variantNameConst);
+        } else {
+            addLocal(v->name, enumStmt->type, true);
+        }
     }
 
-    emitByte(stmt->line, OP_POP); // Pop the enum class
+    emitByte(stmt->line, OP_POP);
 }
 
 static void compileInterfaceStmt(Stmt* stmt) {

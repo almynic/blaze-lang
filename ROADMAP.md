@@ -94,11 +94,6 @@ The core compiler is complete and has excellent developer experience. These are 
 - `enum Result { Ok(int), Err(string) }`
 - **`match` typing for variants (✅ Implemented)**: Patterns such as `Ok(x)` or `Variant(a, b)` bind payload variables to the variant’s field types in the type checker (not `unknown`). Further ADT ergonomics or runtime polish remain optional.
 
-#### Interfaces / Protocols
-- Nominal or structural subtyping for shared behavior
-- Define sets of methods that a class must implement
-- Enables cleaner polymorphism in the standard library
-
 **Benefits**:
 - Type-safe collections (Generics)
 - Modeling complex data structures (Enums)
@@ -257,7 +252,7 @@ let {x, y} = p  // ✅ Implemented
 These are current design choices or limitations:
 
 - **Finally blocks and early returns**: Finally blocks don't execute on early return/break (would require more complex bytecode)
-- **Generic limitations**: Trait/constraints on type parameters, variance, and some recursive nominal patterns are not implemented (see Phase 7 deferred items).
+- **Generic limitations**: Interface bounds on generic *class* type parameters (`class C<T: I>`) and variance / recursive nominal guards are implemented (see Phase 7). Optional follow-ups include richer constraint forms (e.g. bounds on generic *function* type parameters) and other refinements listed under Phase 7.
 
 ---
 

@@ -2006,40 +2006,65 @@ static InterpretResult executeWithFrames(VM* vm) {
             }
 
             case OP_GET_PROPERTY: {
-                if (!IS_INSTANCE(peek(vm, 0))) {
-                    runtimeError(vm, "Only instances have properties.");
+                Value receiver = peek(vm, 0);
+                ObjString* name = AS_STRING(READ_CONSTANT());
+
+                if (IS_INSTANCE(receiver)) {
+                    ObjInstance* instance = AS_INSTANCE(receiver);
+                    Value value;
+                    if (tableGet(&instance->fields, name, &value)) {
+                        pop(vm);
+                        push(vm, value);
+                        break;
+                    }
+
+                    if (!bindMethod(vm, instance->klass, name)) {
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    break;
+                }
+
+                if (IS_CLASS(receiver)) {
+                    ObjClass* klass = AS_CLASS(receiver);
+                    Value value;
+                    if (tableGet(&klass->fields, name, &value)) {
+                        pop(vm);
+                        push(vm, value);
+                        break;
+                    }
+                    runtimeError(vm, "Undefined property '%s' on class.", name->chars);
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
-                ObjInstance* instance = AS_INSTANCE(peek(vm, 0));
+                runtimeError(vm, "Only instances and classes have properties.");
+                return INTERPRET_RUNTIME_ERROR;
+            }
+
+            case OP_SET_PROPERTY: {
+                Value valueToSet = peek(vm, 0);
+                Value receiver = peek(vm, 1);
                 ObjString* name = AS_STRING(READ_CONSTANT());
 
-                Value value;
-                if (tableGet(&instance->fields, name, &value)) {
-                    pop(vm);  // Instance
+                if (IS_INSTANCE(receiver)) {
+                    ObjInstance* instance = AS_INSTANCE(receiver);
+                    tableSet(&instance->fields, name, valueToSet);
+                    Value value = pop(vm);
+                    pop(vm);
                     push(vm, value);
                     break;
                 }
 
-                if (!bindMethod(vm, instance->klass, name)) {
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-                break;
-            }
-
-            case OP_SET_PROPERTY: {
-                if (!IS_INSTANCE(peek(vm, 1))) {
-                    runtimeError(vm, "Only instances have fields.");
-                    return INTERPRET_RUNTIME_ERROR;
+                if (IS_CLASS(receiver)) {
+                    ObjClass* klass = AS_CLASS(receiver);
+                    tableSet(&klass->fields, name, valueToSet);
+                    Value value = pop(vm);
+                    pop(vm);
+                    push(vm, value);
+                    break;
                 }
 
-                ObjInstance* instance = AS_INSTANCE(peek(vm, 1));
-                ObjString* name = AS_STRING(READ_CONSTANT());
-                tableSet(&instance->fields, name, peek(vm, 0));
-                Value value = pop(vm);
-                pop(vm);  // Instance
-                push(vm, value);
-                break;
+                runtimeError(vm, "Only instances and classes have fields.");
+                return INTERPRET_RUNTIME_ERROR;
             }
 
             case OP_METHOD: {

@@ -354,6 +354,7 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
 ObjClass* newClass(ObjString* name) {
     ObjClass* klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
     klass->name = name;
+    initTable(&klass->fields);
     initTable(&klass->methods);
     return klass;
 }
@@ -471,6 +472,7 @@ static void freeObject(Obj* object) {
         }
         case OBJ_CLASS: {
             ObjClass* klass = (ObjClass*)object;
+            freeTable(&klass->fields);
             freeTable(&klass->methods);
             FREE(ObjClass, object);
             break;
@@ -585,6 +587,7 @@ static void blackenObject(Obj* object) {
         case OBJ_CLASS: {
             ObjClass* klass = (ObjClass*)object;
             markObject((Obj*)klass->name);
+            markTable(&klass->fields);
             markTable(&klass->methods);
             break;
         }
