@@ -1,0 +1,16 @@
+// Minimal file/path API smoke: readFile, writeFile, exists, and std/path joinPath.
+import { joinPath } from "std/path"
+
+let tmp: string = "/tmp/blaze_io_path_minimal_api_test.txt"
+let p: string = joinPath("/tmp", "blaze_io_path_minimal_api_test.txt")
+print(p == tmp)
+
+let okWrite: bool = writeFile(tmp, "abc")
+print(okWrite)
+print(exists(tmp))
+
+let content: string = readFile(tmp)
+print(content)
+
+print(removeFile(tmp))
+print(exists(tmp) == false)

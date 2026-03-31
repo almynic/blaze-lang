@@ -35,10 +35,13 @@ fn flushStdout() {
     flushOut()
 }
 
-// Read entire file as string; missing/unreadable path yields empty string.
+// Read entire file as string.
+// Throws on missing/unreadable paths instead of returning empty content.
 fn readText(path: string) -> string {
-    let content: string = readFile(path) ?? ""
-    return content
+    if fileExists(path) == false {
+        throw "IOError: readText path does not exist: '" + path + "'"
+    }
+    return readFile(path)
 }
 
 // Read file and split into lines (same byte split as std/string lines(); real newline in literal).
@@ -49,7 +52,11 @@ fn readLines(path: string) -> [string] {
 }
 
 fn writeText(path: string, content: string) -> bool {
-    return writeFile(path, content)
+    if writeFile(path, content) {
+        return true
+    } else {
+        throw "IOError: writeText failed for path '" + path + "'"
+    }
 }
 
 // Write lines joined with newline (no trailing newline after last line unless parts end empty).
@@ -60,7 +67,11 @@ fn writeLines(path: string, parts: [string]) -> bool {
 }
 
 fn appendText(path: string, content: string) -> bool {
-    return appendFile(path, content)
+    if appendFile(path, content) {
+        return true
+    } else {
+        throw "IOError: appendText failed for path '" + path + "'"
+    }
 }
 
 fn appendLines(path: string, parts: [string]) -> bool {
@@ -73,6 +84,15 @@ fn pathExists(path: string) -> bool {
     return fileExists(path)
 }
 
+// exists(path) -> bool alias for discoverability.
+fn exists(path: string) -> bool {
+    return pathExists(path)
+}
+
 fn removeFile(path: string) -> bool {
-    return deleteFile(path)
+    if deleteFile(path) {
+        return true
+    } else {
+        throw "IOError: removeFile failed for path '" + path + "'"
+    }
 }

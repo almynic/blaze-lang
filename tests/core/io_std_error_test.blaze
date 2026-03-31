@@ -1,0 +1,18 @@
+// std/io error semantics: failing operations should throw catchable IO errors.
+let missing: string = "/tmp/blaze_file_that_should_not_exist_123456.txt"
+let caughtRead: bool = false
+
+try {
+    readText(missing)
+} catch (e) {
+    caughtRead = true
+}
+print(caughtRead)
+
+let caughtRemove: bool = false
+try {
+    removeFile(missing)
+} catch (e) {
+    caughtRemove = true
+}
+print(caughtRemove)

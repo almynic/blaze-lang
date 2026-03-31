@@ -1,283 +1,56 @@
 # Blaze Language Roadmap
 
-> **Current Status**: Experimental | **Completion**: 99%+
+> **Current Status**: Experimental (core language complete)  
+> **Focus**: Production hardening and ecosystem maturity
 
-Blaze is a feature-complete statically-typed programming language. This roadmap outlines the current state and potential future enhancements.
-
----
-
-## ✅ Completed Features
-
-### Core Language (100% Complete)
-- ✅ Full lexical analysis (scanner)
-- ✅ Expression and statement parsing
-- ✅ AST construction
-- ✅ Type checking with scope management
-- ✅ Bytecode compilation
-- ✅ Stack-based VM with 65 opcodes
-- ✅ Classes, closures, and inheritance (including super calls)
-- ✅ Garbage collection (mark-and-sweep); compiled script/function objects are rooted on the VM stack before AST teardown so GC cannot reclaim bytecode between compile and run
-- ✅ Lambda expressions with closures, type inference, typed parameters, and block bodies (`=> { ... }`)
-- ✅ Generic functions with type parameters (`fn identity<T>(x: T) -> T`) and explicit calls (`identity<int>(42)`)
-- ✅ Match/case statements and match expressions with pattern matching
-- ✅ For-in loops with proper array iteration
-- ✅ Index assignment for arrays
-- ✅ Range syntax (start..end)
-- ✅ Exception handling (try/catch/throw/finally)
-- ✅ Native primitives for low-level operations
-- ✅ Higher-order functions (map, filter, reduce, etc.)
-- ✅ Function type parameters (passing functions as arguments)
-- ✅ Module system with selective imports
-- ✅ String concatenation with `+` operator
-- ✅ Spread operator (`...`) for array expansion and concatenation
-
-### Advanced Type System (100% Complete)
-- ✅ Union types (`int | string`)
-- ✅ Optional/nullable types (`int?`) with null coalescing (`??`)
-- ✅ Type narrowing for union and optional types in conditionals
-- ✅ Function types with full compatibility checking
-- ✅ Type parameters in function signatures (placeholder `TYPE_TYPE_PARAM` types; generic type usage in annotations resolves conservatively)
-
-### Developer Experience (100% Complete)
-- ✅ Interactive REPL with multi-line support and line editing
-- ✅ GNU Readline integration with persistent command history
-- ✅ Color-coded terminal output for errors, warnings, and REPL
-- ✅ Context-aware error messages with code snippets and helpful hints
-- ✅ Enhanced error messages with suggestions
-
-### Standard Library (100% Complete)
-- ✅ Comprehensive standard library (math, array, string modules)
-- ✅ Prelude auto-loading (std/prelude.blaze)
-- ✅ Higher-order functions in stdlib
-- ✅ Module system with selective imports
-
-### Optimizations (100% Complete)
-- ✅ String interning for efficient string comparison and memory usage
-- ✅ String interpolation with `${expression}` syntax
-- ✅ Constant folding optimization for compile-time evaluation
-- ✅ Dead code elimination removes unreachable code after returns/throws
-- ✅ Tail call optimization for efficient recursive functions
-- ✅ NaN boxing for 50% memory reduction (8-byte values)
-- ✅ Loop unrolling for small constant ranges and arrays
+Blaze already ships a complete statically typed language core. The roadmap below is organized by delivery priority so contributors can focus on the highest-impact work first.
 
 ---
 
-## 🔮 Future Enhancements (Optional)
+## 1) Snapshot
 
-The core compiler is complete and has excellent developer experience. These are optional enhancements that could be added in the future:
+### Current Strengths
+- Type system depth: generics, unions, inference, narrowing
+- Broad regression coverage for core language behavior
+- Runtime/compiler foundations: GC, string interning, constant folding, TCO
+- Good diagnostics and error recovery
+- Strong documentation set (`README.md`, `ARCHITECTURE.md`, spec, changelog)
 
-### Phase 7: Advanced Type System (Core complete)
-**Priority**: Medium | **Complexity**: High
-
-#### Interfaces and `implements` (✅ Implemented)
-- `interface Drawable { fn area() -> float }` — signatures only; zero runtime footprint.
-- `class Circle implements Drawable { ... }` — compile-time conformance (method names and function types must match).
-- Variables may use interface types; assignment uses `ClassType.implementedInterfaces`.
-
-#### Generic functions (✅ Implemented)
-- `fn name<T, U>(...) -> R` with type parameters in scope for the body
-- Explicit call syntax: `name<int>(args)` (type arguments parsed; inference from arguments also supported)
-- `std/array.blaze` uses generic-style functions over `[T]` and higher-order helpers
-
-#### Generic classes and type aliases (✅ Implemented)
-- User-defined generic classes: `class Box<T> { ... }` with per-instantiation monomorphization (mangled globals such as `Box__int`)
-- Type annotations and constructors: `Box<int>`, `Box<int>(...)`, nested `Box<Box<int>>` where supported
-- `type Alias = Box<int>` aliases resolve like the underlying type
-- **Typed `extends`**: `extends Parent` or `extends Foo<T>` / `extends Foo<int>` with monomorph lowering carrying resolved superclass for `OP_INHERIT`.
-- **Type-parameter bounds**: `class C<T: SomeInterface>` with checking at `C<Args>` instantiation (classes must `implements` the bound interface).
-- **Variance (✅ Implemented)**: `out` / `in` on class type parameters (e.g. `class Box<out T> {}`, `class Sink<in T> {}`). Subtyping for two `TYPE_GENERIC_INST` sharing a template respects covariance (`out`) and contravariance (`in`); omitted modifiers default to invariant.
-- **Recursive nominal guards (✅ Implemented)**: `substituteTypeInType` and `typesEqual` are depth-bounded so deeply nested or pathological generic type trees cannot exhaust the C stack.
-- **Generic-only superclass shapes (✅ Implemented)**: For generic classes, `extends Base<T>` is checked so superclass type arguments use only the enclosing class’s type parameters (or concrete types), not unbound or out-of-range type parameters.
-
-#### Enum Types and Pattern Matching (✅ Core implemented)
-- Algebraic Data Types (ADTs) with associated data
-- `enum Result { Ok(int), Err(string) }`
-- **`match` typing for variants (✅ Implemented)**: Patterns such as `Ok(x)` or `Variant(a, b)` bind payload variables to the variant’s field types in the type checker (not `unknown`). Further ADT ergonomics or runtime polish remain optional.
-
-**Benefits**:
-- Type-safe collections (Generics)
-- Modeling complex data structures (Enums)
-- More flexible polymorphism (Interfaces)
-
-**Estimated Effort**: Optional follow-ups (constraints, `Array<T>` nominal, etc.) as separate milestones
+### Current Gaps
+- File I/O is still stubbed in `std/io.blaze` and `std/path.blaze`
+- Several runtime failure paths still favor process abort behavior over recoverable runtime errors
+- Ecosystem features (LSP, package manager, FFI, richer stdlib modules) are not yet in place
 
 ---
 
-### Phase 8: Debugger and Tooling (Mostly complete)
-**Priority**: Medium | **Complexity**: Medium
+## 2) Production Readiness Priorities
 
-#### Step-Through Execution
-- ✅ Breakpoint support in VM (`break`, `delete`, persistence file)
-- ✅ Step-through execution (`step`, `next`, `continue`)
-- ✅ Variable inspection at breakpoints (`locals` frame slots)
-- ✅ Call stack visualization (`bt`)
-- ✅ Step out (`out` / `o`)
-- ✅ Richer conditional breakpoints (`hit`, `line`, `depth`, `local[N]`, `&&`)
-
-#### Remaining Work
-- Debugger protocol for IDE integration
-- Additional debugger UX polish and docs
-
-**Benefits**:
-- Better debugging experience
-- Easier development and troubleshooting
-- IDE integration potential
-
-**Estimated Effort**: 1-2 additional weeks for IDE protocol and polish
-
----
-
-### Phase 9: Performance Optimizations (100% Complete)
-**Priority**: Low | **Complexity**: Medium-High
-
-#### Completed Optimizations
-- ✅ Constant folding
-- ✅ Dead code elimination
-- ✅ String interning
-- ✅ Tail call optimization
-- ✅ NaN boxing
-- ✅ Loop unrolling
-
-#### Potential Future Optimizations
-
-**Method Inlining**
-- Automatically inline small, frequently called methods/functions
-- Removes call overhead and improves pipeline utilization
-- Requires call graph analysis and size heuristics
-
-**Foreign Function Interface (FFI)**
-- Load and call native C libraries dynamically (`.so`, `.dylib`, `.dll`)
-- Enables high-performance native extensions
-- Requires dynamic loading (libdl) and argument marshalling
-
-**Estimated Effort**: 2-3 weeks per optimization
-
----
-
-### Phase 10: Destructuring ✅ (Complete - 100%)
-**Priority**: Low | **Complexity**: Medium
-
-#### Array Destructuring ✅ (Complete)
-```blaze
-let [a, b, c] = [1, 2, 3]  // ✅ Implemented
-let [first, ...rest] = [1, 2, 3, 4, 5]  // ✅ Implemented
-```
-
-**Features**:
-- Basic array destructuring for variable declarations
-- Works with both `let` and `const`
-- Type checking validates array types
-- Support for nested arrays
-- Support for expressions as initializers
-- Rest parameters (`...rest`) - slices remaining elements into array
-- New `OP_ARRAY_SLICE` opcode for efficient array slicing
-
-#### Object/Class Destructuring ✅ (Complete)
-```blaze
-class Point {
-    fn init(x: int, y: int) {
-        this.x = x
-        this.y = y
-    }
-}
-let p = Point()
-p.init(10, 20)
-let {x, y} = p  // ✅ Implemented
-```
-
-**Features**:
-- Object/class property destructuring
-- Works with both `let` and `const`
-- Type checking validates object types
-- Partial destructuring (only extract needed properties)
-- Runtime validation of property existence
-
-**Benefits**:
-- ✅ More ergonomic data access (arrays and objects)
-- ✅ Cleaner code for working with collections
-- ✅ Matches modern language features
-- ✅ Rest parameters enable flexible patterns
-- ✅ Reduces boilerplate code
-
-**Implementation Complete**: All destructuring features implemented!
-
----
-
-### Phase 11: Low-Level Primitives (Bitwise complete)
-**Priority**: Medium | **Complexity**: Low
-
-#### Bitwise Operators (✅ Implemented)
-- `&` (AND), `|` (OR), `^` (XOR), `~` (NOT), `<<` (SHL), `>>` (SHR) are implemented across scanner/parser/typechecker/compiler/VM.
-- Integer-only typing for bitwise/shift operations is enforced in the type checker.
-- Regression coverage exists under `tests/bitwise/*.blaze`.
-
-#### Pointer Operations (Not Started)
-- `addrOf(var)` and `deref(ptr)` (if safe memory access can be guaranteed)
-- Or a more abstracted `MemoryBuffer` for raw byte manipulation
-
----
-
-### Additional Enhancement Ideas
-
-#### Enhanced Standard Library
-- File I/O module (read/write files)
-- JSON parsing/serialization
-- HTTP client library
-- Regular expressions
-- Date/Time handling
-
-#### Language Server Protocol (LSP)
-- IDE integration via LSP
-- Autocomplete
-- Go to definition
-- Find references
-- Rename refactoring
-
-#### Package Manager
-- Package registry
-- Dependency management
-- Version resolution
-- Lock files
-
-#### Compilation Improvements
-- Compile to native code (LLVM backend)
-- AOT compilation
-- Incremental compilation
-- Cross-compilation support
-
----
-
-## Production Readiness Priorities
-
-This section tracks the highest-impact work to move Blaze from experimental to production-ready.
+This is the primary execution plan for moving from experimental to production-ready.
 
 ### Critical (Blockers)
-
 1. **Complete file I/O**
-   - `std/io.blaze` and `std/path.blaze` are currently stubs.
-   - Implement end-to-end file primitives (open/read/write/close, existence checks, and path helpers).
+   - Replace `std/io.blaze` and `std/path.blaze` stubs with real file/path primitives.
+   - Include open/read/write/close, existence checks, and path helpers.
 2. **Graceful OOM handling**
-   - Replace hard process exits on allocation failure with runtime exceptions where feasible.
-   - Keep diagnostics actionable so user code can fail predictably.
+   - Replace hard exits on allocation failure with runtime exceptions where feasible.
+   - Keep diagnostics clear and actionable.
 3. **Stack overflow protection**
-   - Ensure frame/value stack limits fail with catchable runtime errors (not crashes).
-   - Validate behavior around `FRAMES_MAX` and `STACK_MAX` boundaries.
+   - Ensure `FRAMES_MAX` and `STACK_MAX` boundaries produce catchable runtime errors.
+   - Avoid crash-style failure behavior under deep recursion/large stacks.
 
 ### Important (Production Quality)
-
 4. **Structured error types**
-   - Move beyond bare string exceptions to typed error objects/kinds.
-5. **Array and string bounds safety**
-   - Guarantee out-of-bounds indexing raises runtime exceptions instead of undefined behavior.
-6. **`super` type checking completion**
-   - Finish remaining `typechecker.c` TODO coverage for superclass typing.
-7. **Stdlib breadth**
-   - Prioritize practical modules: collections, JSON parsing, and network I/O.
+   - Move from string-only exceptions to typed runtime error values.
+5. **Array/string bounds safety**
+   - Guarantee out-of-bounds access raises runtime exceptions, never undefined behavior.
+6. **Complete `super` type checking**
+   - Finish the remaining `typechecker.c` TODO coverage for superclass typing.
+7. **Expand practical stdlib**
+   - Prioritize collections, JSON parsing, and network I/O.
 8. **Stress, fuzz, and benchmark coverage**
-   - Add targeted tests for memory pressure, deep recursion, large data, and baseline performance.
+   - Add memory pressure, deep recursion, large-data, and baseline performance suites.
 
 ### Nice-to-Have
-
 9. **Configurable resource limits** (`FRAMES_MAX`, `STACK_MAX`, etc.)
 10. **LSP/IDE integration**
 11. **FFI support**
@@ -285,53 +58,110 @@ This section tracks the highest-impact work to move Blaze from experimental to p
 13. **Cross-platform CI/testing** (Linux, macOS, Windows)
 14. **Concurrency model** (threads and/or async)
 
-### Existing Strengths
+---
 
-- Type system depth (generics, unions, inference, narrowing)
-- Broad regression coverage for core language behavior
-- Strong documentation quality (README, architecture, specification, changelog)
-- Implemented runtime/compiler foundations (GC, interning, TCO, constant folding)
-- Helpful diagnostics and parser/typechecker error recovery
+## 3) Capability Status
+
+### Core Language (Implemented)
+- Scanner, parser, AST, type checker, bytecode compiler, stack VM
+- Classes/closures/inheritance (`super` calls supported)
+- Exceptions (`try/catch/throw/finally`)
+- Lambdas, higher-order functions, range syntax, for-in loops, spread operator
+- Module system with selective imports
+
+### Type System (Implemented with follow-up room)
+- Union/optional types and narrowing
+- Function type compatibility
+- Generic functions with inference and explicit type arguments
+- Generic classes with monomorphization, typed `extends`, bounds, and variance
+- Enum payload typing in `match` patterns
+
+### Runtime and Performance (Implemented)
+- Mark-and-sweep GC (with compile/run object rooting)
+- String interning and interpolation
+- Constant folding and dead code elimination
+- Tail call optimization
+- NaN-boxed value representation
+- Loop unrolling for small constant ranges/arrays
+
+### Developer Experience (Mostly implemented)
+- Interactive REPL with Readline history/editing
+- Colorized output and improved diagnostics
+- Debugger CLI: breakpoints, step/next/out/continue, locals, stack traces
+- Conditional breakpoints (`hit`, `line`, `depth`, `local[N]`, `&&`)
+- Remaining debugger follow-up: IDE-facing protocol polish and UX docs
+
+### Standard Library (Partially complete for production needs)
+- Present and usable: prelude, math/array/string helpers, higher-order utilities
+- Missing for production readiness: complete file I/O and broader modules (JSON/network/collections)
+
+### Notable Completed Language Milestones
+- Destructuring (array and object/class forms, including rest slice behavior)
+- Bitwise operators (`&`, `|`, `^`, `~`, `<<`, `>>`) with integer-only typing and regression tests
 
 ---
 
-## Known Limitations
+## 4) Future Enhancement Tracks (Optional)
 
-These are current design choices or limitations:
+These are valuable, but intentionally secondary to production-readiness blockers.
 
-- **Finally blocks and early exits**: `finally` now runs on early `return`; loop `break` is not a language feature yet
-- **Generic limitations**: Interface bounds on generic *class* type parameters (`class C<T: I>`) and variance / recursive nominal guards are implemented (see Phase 7). Optional follow-ups include richer constraint forms (e.g. bounds on generic *function* type parameters) and other refinements listed under Phase 7.
+### Tooling and Ecosystem
+- Full LSP support (autocomplete, go-to-definition, find references, rename)
+- Package registry and dependency management workflow
+- Cross-platform release validation and CI hardening
 
----
+### Runtime/Interop
+- FFI for native library calls (`.so`, `.dylib`, `.dll`)
+- Configurable runtime resource limits
+- Concurrency model design (threaded and/or async approach)
 
-## Contributing
-
-If you're interested in contributing to any of these future enhancements, please:
-
-1. Open an issue to discuss the feature
-2. Review the existing codebase architecture
-3. Submit a pull request with tests
-
----
-
-## Version History
-
-- **v0.1.0** (Current): Feature-complete core language with all essential features
-- **v0.2.0** (In progress): Generic functions, typed/block lambdas, user-defined generic classes with monomorphization, type aliases, debugger foundations
-- **v0.3.0** (Future): Debugger protocol and developer tooling polish
-- **v1.0.0** (Future): Performance optimizations and stability improvements
+### Compilation Pipeline
+- Optional native backend exploration (LLVM/AOT)
+- Incremental compilation and broader cross-compilation support
+- Method inlining and additional call-graph driven optimizations
 
 ---
 
-## Maintenance
+## 5) Known Limitations
 
-Even though the language is feature-complete, ongoing maintenance includes:
+- **Finally and early exits**: `finally` runs on early `return`; loop `break` is not currently a language feature.
+- **Generic follow-ups**: core class bounds/variance/recursive nominal guards are implemented; additional constraint forms (for example on generic function parameters) remain open.
 
-- Bug fixes
-- Performance improvements
-- Documentation updates
-- Standard library enhancements
-- Test coverage improvements
+---
+
+## 6) Contribution Guide
+
+If you want to help with roadmap items:
+1. Open an issue with scope and expected behavior.
+2. Align the design with current architecture and language semantics.
+3. Submit a PR with focused tests (plus regressions for bug fixes).
+
+---
+
+## 7) Version Direction
+
+- **v0.1.0** (current): feature-complete core language
+- **v0.2.0** (in progress): generics/debugger foundations and stabilization
+- **v0.3.0** (future): tooling protocol polish and ecosystem growth
+- **v0.4.0** (future): production blockers pass 1 (file I/O + runtime hardening)
+- **v0.5.0** (future): structured errors and bounds-safety guarantees
+- **v0.6.0** (future): stdlib expansion (collections, JSON, networking baseline)
+- **v0.7.0** (future): stress/fuzz/performance suites and CI hardening
+- **v0.8.0** (future): IDE/LSP integration milestone
+- **v0.9.0** (future): ecosystem polish (package workflow + cross-platform validation)
+- **v0.10.0** (future): release-candidate quality gate before 1.0
+- **v1.0.0** (future): production-readiness goals completed and stabilized
+
+---
+
+## 8) Ongoing Maintenance
+
+Continuous work regardless of milestone:
+- Bug fixes and regression hardening
+- Performance profiling and targeted improvements
+- Documentation quality and examples
+- Standard library expansion
+- Test coverage expansion
 
 ---
 

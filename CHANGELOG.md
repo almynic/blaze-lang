@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Planned Release Milestones
+
+- **v0.2.0**: generics/debugger foundations and stabilization
+- **v0.3.0**: tooling protocol polish and ecosystem growth
+- **v0.4.0**: production blockers pass 1 (file I/O + runtime hardening)
+- **v0.5.0**: structured errors and bounds-safety guarantees
+- **v0.6.0**: stdlib expansion (collections, JSON, networking baseline)
+- **v0.7.0**: stress/fuzz/performance suites and CI hardening
+- **v0.8.0**: IDE/LSP integration milestone
+- **v0.9.0**: ecosystem polish (package workflow + cross-platform validation)
+- **v0.10.0**: release-candidate quality gate before 1.0
+- **v1.0.0**: production-readiness goals completed and stabilized
+
 ### March 31, 2026 - Production readiness prioritization
 
 #### Changed

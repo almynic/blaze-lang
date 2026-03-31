@@ -17,7 +17,7 @@ import { contains, isEmpty, isBlank, padLeft, padRight, center, lines, words, ne
 import { countOccurrences, reverseString, capitalize, joinStrings, joinLines, orEmpty } from "std/string"
 
 // I/O (from std/io)
-import { readLine, readLinePrompt, println, printStr, writeValue, writeString, flushStdout, readText, readLines, writeText, writeLines, appendText, appendLines, pathExists, removeFile } from "std/io"
+import { readLine, readLinePrompt, println, printStr, writeValue, writeString, flushStdout, readText, readLines, writeText, writeLines, appendText, appendLines, pathExists, exists, removeFile } from "std/io"
 
 // Collections helpers (from std/collections)
 import { setHas, unique, setUnion, setIntersect, setDiff, flatten, chunk } from "std/collections"
