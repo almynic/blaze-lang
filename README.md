@@ -24,7 +24,7 @@
 - ✅ Interactive REPL with readline support
 - ✅ Excellent developer experience (colored errors, helpful hints)
 
-**Codebase**: ~12,000+ lines of C | ~200+ lines of Blaze stdlib (`std/array.blaze` and friends)
+**Codebase**: ~15,600+ lines of C | ~1,350+ lines of Blaze stdlib (`std/` modules below)
 
 ---
 
@@ -163,7 +163,7 @@ print(~5)          // bitwise not    => -6
 - **Interactive REPL** with GNU Readline support
 - **Color-coded output** for better readability
 - **Context-aware error messages** with helpful hints
-- **Comprehensive standard library** (math, array, string modules)
+- **Standard library** in `std/` (math, array, string, collections, I/O, time, and more)
 
 ### Performance
 
@@ -301,10 +301,16 @@ let sum = reduce(numbers, 0, (acc, x) => acc + x)
 
 ### Modules
 
-- **std/prelude.blaze** - Auto-loaded common functions
-- **std/math.blaze** - Mathematical utilities
-- **std/string.blaze** - String manipulation
-- **std/array.blaze** - Higher-order functions and utilities
+- **std/prelude.blaze** — Auto-loaded common functions
+- **std/math.blaze** — Math utilities
+- **std/string.blaze** — String helpers
+- **std/array.blaze** — Higher-order array functions (`map`, `filter`, `reduce`, …)
+- **std/collections.blaze** — Collection-style helpers
+- **std/date.blaze** / **std/time.blaze** — Date and time utilities
+- **std/io.blaze** / **std/path.blaze** — Basic I/O and path helpers
+- **std/random.blaze** — Random number helpers
+- **std/ascii.blaze** — ASCII character utilities
+- **std/debug.blaze** — Debugging helpers
 
 ### Example Usage
 
@@ -398,6 +404,8 @@ Source Code → Scanner → Parser → AST → Type Checker → Compiler → Byt
 
 For more details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
+The C implementation splits the VM across several translation units (`vm_core.c`, `vm_debugger.c`, `vm_natives.c`, `vm_call.c`, `vm_execute.c`, plus `vm.c`) and keeps the parser, type checker, and bytecode compiler in `.inc` fragments included from their main `.c` files. Paths and filenames are listed in [ARCHITECTURE.md](ARCHITECTURE.md) and [src/README.md](src/README.md).
+
 ---
 
 ## Project Status
@@ -440,7 +448,7 @@ Contributions are welcome! Please:
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License — see [LICENSE.md](LICENSE.md) for details
 
 ---
 
@@ -452,4 +460,4 @@ Built with inspiration from:
 
 ---
 
-**Last Updated**: March 31, 2026
+**Last Updated**: April 1, 2026

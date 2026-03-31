@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### April 1, 2026 - Source layout refactor and documentation refresh
+
+#### Changed
+- **Interpreter layout**: Split `src/runtime/vm.c` into `vm_core.c`, `vm_debugger.c`, `vm_natives.c`, `vm_call.c`, `vm_execute.c`, plus `vm_internal.h` and a slimmer `vm.c`. Factored `compiler.c`, `typechecker.c`, and `parser.c` into `.inc` fragments (single translation unit each) with `compiler_internal.h`, `typechecker_internal.h`, and `parser_internal.h`; added `tools/split_sources.py` to regenerate compiler/typechecker/parser fragments from a monolithic backup.
+- **README**: refreshed codebase size figures; expanded `std/` module list; license link points to `LICENSE.md`; developer-experience bullet aligned with current standard library; notes the split interpreter layout (see ARCHITECTURE).
+- **ARCHITECTURE**: codebase size and `std/` file-tree/module narrative updated; documented I/O natives and additional std modules; pipeline **File** lines and **File Structure** tree updated for the multi-file VM and `.inc` fragments.
+- **LANGUAGE_SPECIFICATIONS**: parser references updated for `parser.c` and `parser_*.inc` fragments.
+- **src/README**: subfolder table documents the VM split and `.inc` fragments.
+- **ROADMAP**: clarified I/O/path gaps versus current `std/io.blaze` and string-only `std/path.blaze`; adjusted production-readiness wording for file I/O and stdlib status.
+- **bench/README**: documented configuring the build (`cmake -B build`) before `cmake --build build`.
+
 ### Planned Release Milestones
 
 - **v0.2.0**: generics/debugger foundations and stabilization

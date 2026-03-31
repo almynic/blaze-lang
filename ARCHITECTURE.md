@@ -32,7 +32,7 @@ Source Code → Scanner → Parser → AST → Type Checker → Compiler → Byt
 - **Type System**: Static with inference
 - **Memory Management**: Mark-and-sweep garbage collection
 - **Execution**: Stack-based virtual machine
-- **Codebase Size**: ~12,000+ lines of C; standard library spread across `std/*.blaze` (including generic-style `std/array.blaze`)
+- **Codebase Size**: ~15,600+ lines of C; standard library ~1,350+ lines across `std/*.blaze` (including generic-style `std/array.blaze` and other modules)
 
 ---
 
@@ -61,7 +61,7 @@ The scanner converts source code into a stream of tokens.
 ---
 
 ### 2. Parser (Syntax Analysis)
-**File**: `src/syntax/parser.c`, `src/syntax/parser.h`
+**Files**: `src/syntax/parser.c` (includes `parser_infra.inc`, `parser_type.inc`, `parser_expr.inc`, `parser_stmt.inc`), `src/syntax/parser_internal.h`, `src/syntax/parser.h`
 
 The parser constructs an Abstract Syntax Tree (AST) from tokens using Pratt parsing for expressions.
 
@@ -140,7 +140,7 @@ The AST represents the program structure as a tree of nodes.
 ---
 
 ### 4. Type Checker
-**File**: `src/semantics/typechecker.c`, `src/semantics/typechecker.h`, `src/semantics/types.c`, `src/semantics/types.h`
+**Files**: `src/semantics/typechecker.c` (includes `typechecker_err_symbols.inc`, `typechecker_narrow.inc`, `typechecker_resolve.inc`, `typechecker_expr.inc`, `typechecker_stmt.inc`), `src/semantics/typechecker_internal.h`, `src/semantics/typechecker.h`, `src/semantics/types.c`, `src/semantics/types.h`
 
 The type checker performs semantic analysis and type inference.
 
@@ -170,7 +170,7 @@ The type checker performs semantic analysis and type inference.
 ---
 
 ### 5. Compiler (Bytecode Generation)
-**File**: `src/codegen/compiler.c`, `src/codegen/compiler.h`
+**Files**: `src/codegen/compiler.c` (includes `compiler_emit.inc`, `compiler_expr.inc`, `compiler_stmt.inc`), `src/codegen/compiler_internal.h`, `src/codegen/compiler.h`
 
 The compiler generates bytecode for the virtual machine.
 
@@ -192,7 +192,7 @@ The compiler generates bytecode for the virtual machine.
 
 ## Virtual Machine
 
-**File**: `src/runtime/vm.c`, `src/runtime/vm.h`
+**Files**: `src/runtime/vm.c`, `src/runtime/vm_core.c`, `src/runtime/vm_debugger.c`, `src/runtime/vm_natives.c`, `src/runtime/vm_call.c`, `src/runtime/vm_execute.c`, `src/runtime/vm_internal.h`, `src/runtime/vm.h`
 
 ### Architecture
 
@@ -383,7 +383,7 @@ Blaze uses a **mark-and-sweep garbage collector**.
 - **Active compiler chain** (`markCompilerRoots`) while a function or script is being compiled
 - Open upvalues
 
-**Compile-time boundary**: When a top-level script finishes compiling, the active compiler is torn down (`current` is cleared). The compiled `ObjFunction` is not yet reachable from globals. Before the AST is freed, the VM **must** push that function onto the value stack so a GC triggered during AST teardown cannot collect the bytecode chunk while it is still needed for execution (`interpretInternal` in `src/runtime/vm.c`).
+**Compile-time boundary**: When a top-level script finishes compiling, the active compiler is torn down (`compiler_current` / `current` is cleared). The compiled `ObjFunction` is not yet reachable from globals. Before the AST is freed, the VM **must** push that function onto the value stack so a GC triggered during AST teardown cannot collect the bytecode chunk while it is still needed for execution (`interpretInternal` in `src/runtime/vm.c`).
 
 **GC Triggers**:
 - After allocating certain number of bytes
@@ -467,6 +467,7 @@ import { map, filter, reduce } from "std/array"
 - Low-level operations that can't be implemented in Blaze
 - Math: `_sin`, `_cos`, `_sqrt`, `_log`, `_exp`, `_random`
 - String: `_charAt`, `_substr`
+- I/O: `input`, `writeStr`, `writeLine`, `flushOut`, `readFile`, `writeFile`, `appendFile`, `fileExists`, `deleteFile`, and related helpers (surfaced through `std/io.blaze`)
 - Array: internal operations
 - Type operations: `type`, `toString`
 
@@ -501,6 +502,8 @@ import { map, filter, reduce } from "std/array"
 - Auto-loaded common functions
 - `len`, `push`, `pop`
 - `toString`, `toInt`, `toFloat`
+
+**Additional `std/` modules** (import explicitly): `collections.blaze`, `date.blaze`, `time.blaze`, `io.blaze`, `path.blaze` (string-only path helpers; no filesystem introspection), `random.blaze`, `ascii.blaze`, `debug.blaze`.
 
 ---
 
@@ -561,23 +564,30 @@ blaze-lang/
 ├── src/
 │   ├── README.md           # Subfolder layout (include roots)
 │   ├── base/               # common, memory, value, chunk
-│   ├── runtime/            # object, vm, debug
-│   ├── syntax/             # scanner, parser, ast
-│   ├── semantics/          # types, typechecker, generic
-│   ├── codegen/            # compiler
+│   ├── runtime/            # object, vm (vm.c + vm_*.c + vm_internal.h), debug
+│   ├── syntax/             # scanner, parser (.c + parser_*.inc), ast
+│   ├── semantics/          # types, typechecker (.c + typechecker_*.inc), generic
+│   ├── codegen/            # compiler (.c + compiler_*.inc + compiler_internal.h)
 │   ├── module/             # imports / load pipeline
 │   └── support/            # colors (terminal styling)
 ├── std/
 │   ├── prelude.blaze       # Auto-loaded functions
 │   ├── math.blaze          # Math functions
 │   ├── string.blaze        # String utilities
-│   └── array.blaze         # Array utilities
+│   ├── array.blaze         # Array utilities
+│   ├── collections.blaze   # Set-style helpers on arrays
+│   ├── date.blaze / time.blaze
+│   ├── io.blaze            # Stdin/stdout and file text I/O (natives)
+│   ├── path.blaze          # POSIX-style path joining (strings only)
+│   ├── random.blaze / ascii.blaze / debug.blaze
+│   └── …                   # Other std modules as added
 ├── tests/                  # Regression fixtures (by area: bitwise/, class/, core/, …)
 ├── examples/               # Example programs
 ├── CMakeLists.txt          # Build configuration
 ├── CHANGELOG.md            # Version history
 ├── ROADMAP.md              # Future plans
 ├── ARCHITECTURE.md         # This file
+├── tools/                  # e.g. split_sources.py (regenerate parser/typechecker/compiler .inc fragments)
 └── .cursor/rules/          # Optional Cursor IDE rules for contributors
 ```
 
@@ -613,4 +623,4 @@ blaze-lang/
 
 ---
 
-**Last Updated**: March 31, 2026
+**Last Updated**: April 1, 2026

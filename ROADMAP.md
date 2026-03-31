@@ -17,9 +17,9 @@ Blaze already ships a complete statically typed language core. The roadmap below
 - Strong documentation set (`README.md`, `ARCHITECTURE.md`, spec, changelog)
 
 ### Current Gaps
-- File I/O is still stubbed in `std/io.blaze` and `std/path.blaze`
+- **I/O and paths**: `std/io.blaze` exposes native file and stdin/stdout helpers, but production-grade behavior (typed errors, streaming, resource limits) and broader filesystem APIs are still evolving; `std/path.blaze` is string-only (join/basename/dirname style), not a full FS layer.
 - Several runtime failure paths still favor process abort behavior over recoverable runtime errors
-- Ecosystem features (LSP, package manager, FFI, richer stdlib modules) are not yet in place
+- Ecosystem features (LSP, package manager, FFI, richer stdlib modules such as JSON/networking) are not yet in place
 
 ---
 
@@ -28,9 +28,9 @@ Blaze already ships a complete statically typed language core. The roadmap below
 This is the primary execution plan for moving from experimental to production-ready.
 
 ### Critical (Blockers)
-1. **Complete file I/O**
-   - Replace `std/io.blaze` and `std/path.blaze` stubs with real file/path primitives.
-   - Include open/read/write/close, existence checks, and path helpers.
+1. **Production-grade file I/O and path/FS coverage**
+   - Harden and extend native-backed I/O (clear error surfaces, streaming or chunked reads where needed, consistent limits).
+   - Expand path and filesystem helpers beyond string joining (`std/path.blaze`) where production use requires it.
 2. **Graceful OOM handling**
    - Replace hard exits on allocation failure with runtime exceptions where feasible.
    - Keep diagnostics clear and actionable.
@@ -44,7 +44,7 @@ This is the primary execution plan for moving from experimental to production-re
 5. **Array/string bounds safety**
    - Guarantee out-of-bounds access raises runtime exceptions, never undefined behavior.
 6. **Complete `super` type checking**
-   - Finish the remaining `typechecker.c` TODO coverage for superclass typing.
+   - Finish the remaining type checker TODO coverage for superclass typing (`src/semantics/typechecker.c` and `typechecker_*.inc` fragments).
 7. **Expand practical stdlib**
    - Prioritize collections, JSON parsing, and network I/O.
 8. **Stress, fuzz, and benchmark coverage**
@@ -92,8 +92,8 @@ This is the primary execution plan for moving from experimental to production-re
 - Remaining debugger follow-up: IDE-facing protocol polish and UX docs
 
 ### Standard Library (Partially complete for production needs)
-- Present and usable: prelude, math/array/string helpers, higher-order utilities
-- Missing for production readiness: complete file I/O and broader modules (JSON/network/collections)
+- Present and usable: prelude, math/array/string, collections-style helpers, I/O wrappers, time/date, and other `std/` modules
+- Missing for production readiness: hardened I/O semantics, JSON/networking baselines, and broader ecosystem-facing modules (see priorities above)
 
 ### Notable Completed Language Milestones
 - Destructuring (array and object/class forms, including rest slice behavior)
@@ -165,4 +165,4 @@ Continuous work regardless of milestone:
 
 ---
 
-**Last Updated**: March 31, 2026
+**Last Updated**: April 1, 2026

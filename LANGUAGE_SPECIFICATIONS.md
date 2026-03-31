@@ -1,6 +1,6 @@
 # Blaze Language Specification (BNF)
 
-This document describes the **concrete syntax** of the Blaze language using a **BNF-style grammar**. It is derived from the reference implementation (`src/syntax/parser.c`, `src/syntax/scanner.h`). The grammar is **informative**: the parser uses Pratt precedence and speculative parsing; some rules are therefore **disambiguated at parse time** (notably generic calls `name<T>(args)` vs. binary `<`).
+This document describes the **concrete syntax** of the Blaze language using a **BNF-style grammar**. It is derived from the reference implementation (`src/syntax/parser.c` and its `parser_*.inc` fragments, `src/syntax/scanner.h`). The grammar is **informative**: the parser uses Pratt precedence and speculative parsing; some rules are therefore **disambiguated at parse time** (notably generic calls `name<T>(args)` vs. binary `<`).
 
 For a practical, example-first overview, see [README.md](README.md).
 
@@ -187,7 +187,7 @@ SimpleOrGenericType ::= "int" | "float" | "bool" | "string" | "nil"
 
 ## 11. Expressions
 
-Expressions use **Pratt parsing** with the following precedence (high number = binds tighter in practice; see `Precedence` in `parser.c`):
+Expressions use **Pratt parsing** with the following precedence (high number = binds tighter in practice; see `Precedence` in `parser_expr.inc`, included from `parser.c`):
 
 | Level | Operators / forms |
 |-------|-------------------|
@@ -300,7 +300,7 @@ After `}` or at `EOF`, newline/semicolon may be omitted where the parser allows.
 
 ## 15. Implementation notes
 
-- **Maximum arity:** 255 arguments per call (see `finishCall` in `parser.c`).
+- **Maximum arity:** 255 arguments per call (see `finishCall` in `parser_expr.inc`, included from `parser.c`).
 - **Statement boundary:** Many statements end with newline or `;` via `consumeNewlineOrSemicolon`.
 - **This specification** does **not** fully describe the **type system**, **name resolution**, or **bytecode**; see `ARCHITECTURE.md` and the typechecker/compiler sources.
 
@@ -308,6 +308,10 @@ After `}` or at `EOF`, newline/semicolon may be omitted where the parser allows.
 
 ## References
 
-- Parser: `src/syntax/parser.c`
+- Parser: `src/syntax/parser.c` (includes `parser_infra.inc`, `parser_type.inc`, `parser_expr.inc`, `parser_stmt.inc`), `src/syntax/parser_internal.h`
 - Scanner: `src/syntax/scanner.c`, `src/syntax/scanner.h`
 - AST: `src/syntax/ast.h`
+
+---
+
+**Last Updated**: April 1, 2026
