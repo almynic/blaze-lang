@@ -4,5 +4,5 @@ class Box<T> {
     }
 }
 
-let outer: Box<Box<int>> = Box<Box<int>>()
+let outer: Box<Box<int> > = Box<Box<int> >()
 print(outer.tag())

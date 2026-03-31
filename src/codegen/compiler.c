@@ -1652,6 +1652,8 @@ static void compileReturnStmt(Stmt* stmt) {
             emitReturnFinallyBodies(stmt->line);
             emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)retSlot);
             emitByte(stmt->line, OP_RETURN);
+            // The synthetic local only exists for this terminating return path.
+            current->localCount--;
             return;
         }
 

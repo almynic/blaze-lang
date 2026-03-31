@@ -35,6 +35,14 @@ void writeChunk(Chunk* chunk, uint8_t byte, int line) {
 }
 
 int addConstant(Chunk* chunk, Value value) {
+    // Reuse existing constants to avoid exhausting 8-bit constant operands
+    // in opcodes that currently encode constant indices in one byte.
+    for (int i = 0; i < chunk->constants.count; i++) {
+        if (valuesEqual(chunk->constants.values[i], value)) {
+            return i;
+        }
+    }
+
     writeValueArray(&chunk->constants, value);
     return chunk->constants.count - 1;
 }

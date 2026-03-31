@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### March 31, 2026 - Tail-call return bookkeeping under finally
+
+#### Fixed
+- **Compiler (`src/codegen/compiler.c`)**: when compiling `return <call>` inside active `try`/`finally` regions, the synthetic temporary local used to preserve the return value is now released in compiler bookkeeping after emitting the terminating return path, preventing local-slot accumulation across multiple such return sites in one function.
+
 ### March 31, 2026 - Debugger foundations (Phase 8 start)
 
 #### Added

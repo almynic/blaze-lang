@@ -3,7 +3,6 @@
 // Test 1: Optional type annotation
 let maybeInt: int? = nil
 print(maybeInt)  // nil
-/clear
 maybeInt = 42
 print(maybeInt)  // 42
 
