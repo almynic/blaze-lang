@@ -2014,6 +2014,48 @@ static void checkMatchStmt(TypeChecker* checker, Stmt* stmt) {
     }
 }
 
+static bool tokenEqualsCString(Token t, const char* s) {
+    int n = (int)strlen(s);
+    return t.length == n && memcmp(t.start, s, (size_t)n) == 0;
+}
+
+static bool importPathIsStdArray(Token path) {
+    if (tokenEqualsCString(path, "std/array")) return true;
+    // Some scanner/parser paths may include quotes in token bounds.
+    if (path.length == 11 && path.start[0] == '"' && path.start[10] == '"' &&
+        memcmp(path.start + 1, "std/array", 9) == 0) {
+        return true;
+    }
+    return false;
+}
+
+static void defineImportedStdArraySymbol(TypeChecker* checker, Token name) {
+    if (tokenEqualsCString(name, "map")) {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();
+        Type** fnParams = ALLOCATE(Type*, 1);
+        fnParams[0] = createUnknownType();
+        params[1] = createFunctionType(fnParams, 1, createUnknownType());
+        defineSymbol(checker, "map", 3, createFunctionType(params, 2, createArrayType(createUnknownType())), true);
+    } else if (tokenEqualsCString(name, "filter")) {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();
+        Type** predParams = ALLOCATE(Type*, 1);
+        predParams[0] = createUnknownType();
+        params[1] = createFunctionType(predParams, 1, createBoolType());
+        defineSymbol(checker, "filter", 6, createFunctionType(params, 2, createArrayType(createUnknownType())), true);
+    } else if (tokenEqualsCString(name, "reduce")) {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();
+        params[1] = createUnknownType();
+        Type** accParams = ALLOCATE(Type*, 2);
+        accParams[0] = createUnknownType();
+        accParams[1] = createUnknownType();
+        params[2] = createFunctionType(accParams, 2, createUnknownType());
+        defineSymbol(checker, "reduce", 6, createFunctionType(params, 3, createUnknownType()), true);
+    }
+}
+
 static void checkStmt(TypeChecker* checker, Stmt* stmt) {
     if (stmt == NULL) return;
 
@@ -2084,8 +2126,15 @@ static void checkStmt(TypeChecker* checker, Stmt* stmt) {
             break;
         }
         case STMT_IMPORT: {
-            // Import type checking is handled during module loading
-            // The symbols will be added when the module is executed
+            // Import type checking is mostly handled during module loading.
+            // For selective std/array imports, predeclare key HOF symbols so
+            // expressions like map(...)[0] are recognized as array-typed.
+            ImportStmt* importStmt = &stmt->as.import;
+            if (importStmt->nameCount > 0 && importPathIsStdArray(importStmt->path)) {
+                for (int i = 0; i < importStmt->nameCount; i++) {
+                    defineImportedStdArraySymbol(checker, importStmt->names[i]);
+                }
+            }
             break;
         }
     }

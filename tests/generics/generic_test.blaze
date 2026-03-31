@@ -1,66 +1,60 @@
-// Test file for generic types in Blaze
+// Regression test for generics and generic stdlib helpers.
+import { map, filter, reduce } from "std/array"
 
-print("=== Generic Types Test ===\n")
+fn expectTrue(cond: bool, message: string) {
+    if !cond {
+        throw "generic_test failed: " + message
+    }
+}
 
-// Test generic Array type (conceptual - actual implementation would require stdlib updates)
-print("1. Generic function identity")
 fn identity<T>(x: T) -> T {
     return x
 }
 
+// 1) Explicit generic calls.
 let a: int = identity<int>(42)
 let b: string = identity<string>("hello")
 let c: bool = identity<bool>(true)
+expectTrue(a == 42, "identity<int>")
+expectTrue(b == "hello", "identity<string>")
+expectTrue(c, "identity<bool>")
 
-print("identity<int>(42) = " + toString(a))
-print("identity<string>(\"hello\") = " + b)
-print("identity<bool>(true) = " + toString(c))
+// 2) Inferred generic calls.
+let d = identity(123)
+let e = identity("world")
+let f = identity(3.14)
+expectTrue(d == 123, "identity inferred int")
+expectTrue(e == "world", "identity inferred string")
+expectTrue(f > 3.13 && f < 3.15, "identity inferred float")
 
-// Test with type inference (should work if implemented)
-print("\n2. Generic function with type inference")
-let d = identity(123) // T inferred as int
-let e = identity("world") // T inferred as string
-let f = identity(3.14) // T inferred as float
-
-print("identity(123) = " + d)
-print("identity(\"world\") = " + e)
-print("identity(3.14) = " + f)
-
-// Test generic Array-like operations
-print("\n3. Generic array operations (conceptual)")
-
-// This would work once we have proper generic Array<T> in stdlib
-// For now, we'll test the concepts with our updated std/array.blaze
-
-print("\n4. Testing updated std/array functions")
-import { map, filter, reduce } from "std/array"
-
-// Test map with different types
+// 3) Generic array stdlib helpers.
 let numbers: [int] = [1, 2, 3, 4, 5]
 let strings: [string] = ["one", "two", "three"]
 
 let squared = map(numbers, (x) => x * x)
+expectTrue(len(squared) == 5, "map length")
+expectTrue(squared[0] == 1, "map first element")
+expectTrue(squared[4] == 25, "map last element")
+
 let lengths = map(strings, (s) => len(s))
+expectTrue(len(lengths) == 3, "map strings length")
+expectTrue(lengths[0] == 3, "map strings first")
+expectTrue(lengths[2] == 5, "map strings last")
 
-print("Original numbers: " + toString(numbers))
-print("Squared: " + squared)
-print("Original strings: " + toString(strings))
-print("Lengths: " + lengths)
-
-// Test filter
 let evens = filter(numbers, (x) => x % 2 == 0)
+expectTrue(len(evens) == 2, "filter int length")
+expectTrue(evens[0] == 2, "filter int first")
+expectTrue(evens[1] == 4, "filter int last")
+
 let longStrings = filter(strings, (s) => len(s) > 3)
+expectTrue(len(longStrings) == 1, "filter string length")
+expectTrue(longStrings[0] == "three", "filter string value")
 
-print("Evens: " + evens)
-print("Long strings (>3 chars): " + longStrings)
-
-// Test reduce
 let sum = reduce(numbers, 0, (acc, x) => acc + x)
 let product = reduce(numbers, 1, (acc, x) => acc * x)
-let concatenated = reduce(strings, "", (acc, s) => acc + "-" + s)
+let seedPreserved = reduce(strings, "seed", (acc, s) => acc)
+expectTrue(sum == 15, "reduce sum")
+expectTrue(product == 120, "reduce product")
+expectTrue(seedPreserved == "seed", "reduce string accumulator type")
 
-print("Sum: " + toString(sum))
-print("Product: " + toString(product))
-print("Concatenated strings: " + concatenated)
-
-print("\n=== Generic Types Test Completed ===")
+print("generic_test ok")
