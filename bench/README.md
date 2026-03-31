@@ -17,6 +17,7 @@ Each case has two files with equivalent logic:
 Build Blaze first:
 
 ```bash
+cmake -B build
 cmake --build build
 ```
 
