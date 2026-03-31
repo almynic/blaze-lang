@@ -1,0 +1,39 @@
+class User {
+    fn init(name: string) {
+        this.name = name
+    }
+}
+
+let byName = hashMap()
+hashMapSet(byName, "alice", 100)
+hashMapSet(byName, "bob", 200)
+print(hashMapGet(byName, "alice") ?? -1)
+print(hashMapGet(byName, "bob") ?? -1)
+print(hashMapHas(byName, "carol"))
+print(hashMapSize(byName))
+
+let alice1: User = User("alice")
+let alice2: User = User("alice")
+let byUser = hashMap()
+hashMapSet(byUser, alice1, "premium")
+hashMapSet(byUser, alice2, "basic")
+
+print(hashMapGet(byUser, alice1) ?? "missing")
+print(hashMapGet(byUser, alice2) ?? "missing")
+print(hashMapSize(byUser))
+
+// Class-instance keys are identity-based: a different instance with same fields
+// should not match existing key entries.
+let alice3: User = User("alice")
+print(hashMapHas(byUser, alice3))
+print(hashMapCountPresentKeys(byUser, [alice1, alice2, alice3]))
+
+let bulkUser = hashMapWithCapacity(2)
+hashMapSetBulk(bulkUser, [alice1, alice2], [10, 20])
+print(hashMapGet(bulkUser, alice1) ?? -1)
+
+// Fused string-key range fill matches toString(i) keys / values
+let bulk = hashMapWithCapacity(10)
+hashMapFillStringKeysRange(bulk, 0, 5)
+print(hashMapCountPresentStringKeysRange(bulk, 0, 5))
+print(hashMapGet(bulk, "3") ?? -1)

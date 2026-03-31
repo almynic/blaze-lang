@@ -1,0 +1,10 @@
+let n: int = 2000000
+let i: int = 0
+let total: int = 0
+
+while i < n {
+    total = total + (i * 3) - (i % 7)
+    i = i + 1
+}
+
+print(total)

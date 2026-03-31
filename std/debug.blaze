@@ -1,0 +1,11 @@
+// Blaze Standard Library — lightweight debug helpers (native writeLine).
+
+// Print "label: value" on one line.
+fn trace<T>(label: string, value: T) {
+    writeLine(join([label, ": ", toString(value)], ""))
+}
+
+// Print a labeled bool.
+fn traceBool(label: string, value: bool) {
+    trace(label, value)
+}

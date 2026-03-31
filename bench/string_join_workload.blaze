@@ -1,0 +1,11 @@
+let n: int = 20000
+let i: int = 0
+let parts: [string] = []
+
+while i < n {
+    push(parts, "abc")
+    i = i + 1
+}
+
+let joined: string = join(parts, "-")
+print(len(joined))

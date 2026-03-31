@@ -1,0 +1,30 @@
+// Blaze Standard Library — calendar-oriented helpers (strftime via formatTime / formatTimeUtc).
+
+fn isoDate(unix: int) -> string {
+    return formatTime("%Y-%m-%d", unix)
+}
+
+fn isoDateTime(unix: int) -> string {
+    return formatTime("%Y-%m-%d %H:%M:%S", unix)
+}
+
+fn isoDateTimeUtc(unix: int) -> string {
+    return formatTimeUtc("%Y-%m-%d %H:%M:%S", unix)
+}
+
+fn isoDateTimeCompact(unix: int) -> string {
+    return formatTime("%Y%m%dT%H%M%S", unix)
+}
+
+fn nowIso() -> string {
+    return isoDateTime(time())
+}
+
+fn nowIsoUtc() -> string {
+    return isoDateTimeUtc(time())
+}
+
+// Human-readable line with a "blaze" prefix (local time), for logs or banners.
+fn blazeStamp() -> string {
+    return join([ "blaze", isoDateTime(time()) ], " ")
+}

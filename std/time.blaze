@@ -1,0 +1,26 @@
+// Blaze Standard Library — time (clock, wall time, strftime).
+
+// Unix seconds since epoch (native time()).
+fn unixSeconds() -> int {
+    return time()
+}
+
+// Alias for unixSeconds().
+fn nowUnix() -> int {
+    return time()
+}
+
+// Approximate CPU time used by the process in seconds (native clock() / CLOCKS_PER_SEC).
+fn cpuSeconds() -> float {
+    return clock()
+}
+
+// strftime in local timezone (see C strftime format codes).
+fn formatLocal(fmt: string, unix: int) -> string {
+    return formatTime(fmt, unix)
+}
+
+// strftime in UTC.
+fn formatUtc(fmt: string, unix: int) -> string {
+    return formatTimeUtc(fmt, unix)
+}

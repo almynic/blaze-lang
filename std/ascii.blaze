@@ -1,0 +1,36 @@
+// Blaze Standard Library — ASCII helpers (byte / single-char strings only).
+
+// True if s is one character and that byte is ASCII digit 0–9.
+fn isAsciiDigit(s: string) -> bool {
+    if len(s) != 1 {
+        return false
+    }
+    let c: string = charAt(s, 0)
+    return indexOf("0123456789", c) >= 0
+}
+
+// True if s is one character and ASCII uppercase A–Z or lowercase a–z.
+fn isAsciiAlpha(s: string) -> bool {
+    if len(s) != 1 {
+        return false
+    }
+    let c: string = charAt(s, 0)
+    return (indexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0) || (indexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0)
+}
+
+// True if ASCII alphanumeric.
+fn isAsciiAlphanumeric(s: string) -> bool {
+    return isAsciiDigit(s) || isAsciiAlpha(s)
+}
+
+// True if single byte is ASCII space or tab (extend as needed).
+fn isAsciiWhitespace(s: string) -> bool {
+    if len(s) != 1 {
+        return false
+    }
+    let c: string = charAt(s, 0)
+    if c == " " {
+        return true
+    }
+    return c == "	"
+}

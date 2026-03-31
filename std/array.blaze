@@ -204,3 +204,62 @@ fn findIndex<T>(arr: [T], predicate: fn(T) -> bool) -> int {
     }
     return -1
 }
+
+// extend(dest, src) -> nil - append all elements of src onto dest
+fn extend<T>(dest: [T], src: [T]) -> nil {
+    for item in src {
+        push(dest, item)
+    }
+}
+
+// singleton(x) -> [x]
+fn singleton<T>(x: T) -> [T] {
+    let r: [T] = []
+    push(r, x)
+    return r
+}
+
+// prepend(value, arr) -> new array with value first (immutable-style)
+fn prepend<T>(value: T, arr: [T]) -> [T] {
+    let r: [T] = []
+    push(r, value)
+    extend(r, arr)
+    return r
+}
+
+// rest(arr) -> arr without first element (empty if length 0 or 1)
+fn rest<T>(arr: [T]) -> [T] {
+    return drop(arr, 1)
+}
+
+// allButLast(arr) -> arr without last element
+fn allButLast<T>(arr: [T]) -> [T] {
+    if len(arr) <= 1 {
+        return []
+    }
+    return take(arr, len(arr) - 1)
+}
+
+// reversed(arr) -> new array with elements in reverse order (does not mutate input)
+fn reversed<T>(arr: [T]) -> [T] {
+    let r: [T] = copy(arr)
+    reverse(r)
+    return r
+}
+
+// intersperse(items, sep) -> [a, sep, b, sep, c, ...]
+fn intersperse<T>(items: [T], sep: T) -> [T] {
+    if len(items) == 0 {
+        return []
+    }
+    let r: [T] = []
+    let i: int = 0
+    while i < len(items) {
+        if i > 0 {
+            push(r, sep)
+        }
+        push(r, items[i])
+        i = i + 1
+    }
+    return r
+}

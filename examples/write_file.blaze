@@ -1,0 +1,23 @@
+// Example: write and append text files (std/io via prelude).
+//
+// Run from the repo root:
+//   ./build/blaze examples/write_file.blaze
+//
+// Then inspect the file:
+//   cat /tmp/blaze_write_file_demo.txt
+
+let path: string = "/tmp/blaze_write_file_demo.txt"
+
+// String literals do not treat \n as a newline; use a multiline literal for real line breaks.
+let ok1: bool = writeText(path, "line one ä
+")
+println(ok1)
+
+let ok2: bool = appendText(path, "line two
+")
+println(ok2)
+
+let body: string = readText(path)
+printStr("--- file contents ---")
+println(body)
+printStr("--- end ---")

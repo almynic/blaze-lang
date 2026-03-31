@@ -1,0 +1,11 @@
+let n: int = 200000
+
+let m = hashMapWithCapacity(n)
+hashMapFillRange(m, 0, n)
+
+let hits: int = hashMapCountPresentRange(m, 0, n)
+
+let s = hashSetWithCapacity(1000)
+hashSetAddModRange(s, n, 1000)
+
+print(hits + toInt(hashSetSize(s)))

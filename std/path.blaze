@@ -1,0 +1,52 @@
+// Blaze Standard Library — POSIX-style path joining (string ops only; no FS).
+
+// Join two segments with a single "/". Trims duplicate slashes at the join.
+fn joinPath(a: string, b: string) -> string {
+    let x: string = a
+    let y: string = b
+    while endsWith(x, "/") && len(x) > 0 {
+        x = substr(x, 0, len(x) - 1)
+    }
+    while startsWith(y, "/") && len(y) > 0 {
+        y = substr(y, 1, len(y) - 1)
+    }
+    if len(x) == 0 {
+        return y
+    }
+    if len(y) == 0 {
+        return x
+    }
+    return join([x, y], "/")
+}
+
+// basename(path) -> last segment after final "/"
+fn basename(path: string) -> string {
+    let s: string = path
+    while endsWith(s, "/") && len(s) > 0 {
+        s = substr(s, 0, len(s) - 1)
+    }
+    let i: int = len(s) - 1
+    while i >= 0 {
+        if charAt(s, i) == "/" {
+            return substr(s, i + 1, len(s) - i - 1)
+        }
+        i = i - 1
+    }
+    return s
+}
+
+// parentDir(path) -> directory portion, or "" if none
+fn parentDir(path: string) -> string {
+    let s: string = path
+    while endsWith(s, "/") && len(s) > 0 {
+        s = substr(s, 0, len(s) - 1)
+    }
+    let i: int = len(s) - 1
+    while i >= 0 {
+        if charAt(s, i) == "/" {
+            return substr(s, 0, i)
+        }
+        i = i - 1
+    }
+    return ""
+}

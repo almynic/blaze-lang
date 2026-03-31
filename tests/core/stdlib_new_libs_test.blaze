@@ -1,0 +1,20 @@
+// smoke: std/random, std/time, std/ascii, std/path, std/debug
+print(randIndex(5) >= 0)
+print(randIndex(5) < 5)
+
+let xs: [int] = [10, 20, 30]
+let p: int? = pick(xs)
+print(p != nil)
+
+print(unixSeconds() > 0)
+print(cpuSeconds() >= 0.0)
+
+print(isAsciiDigit("5"))
+print(isAsciiAlpha("A"))
+print(isAsciiWhitespace(" "))
+
+print(joinPath("a/b", "/c"))
+print(basename("/tmp/x.txt"))
+print(parentDir("/tmp/x.txt"))
+
+trace("ok", 42)

@@ -1,0 +1,29 @@
+class User {
+    fn init(id: int) {
+        this.id = id
+    }
+}
+
+let n: int = 80000
+let i: int = 0
+
+let byName = hashMapWithCapacity(n)
+hashMapFillStringKeysRange(byName, 0, n)
+
+let hits: int = hashMapCountPresentStringKeysRange(byName, 0, n)
+
+let byUser = hashMapWithCapacity(n)
+let users: [User] = []
+let vals: [int] = []
+i = 0
+while i < n {
+    let u: User = User(i)
+    push(users, u)
+    push(vals, i + 1)
+    i = i + 1
+}
+hashMapSetBulk(byUser, users, vals)
+
+let objHits: int = hashMapCountPresentKeys(byUser, users)
+
+print(hits + objHits)

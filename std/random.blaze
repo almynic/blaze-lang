@@ -1,0 +1,28 @@
+// Blaze Standard Library — random (wraps native random / randomInt).
+
+// Uniform float in [0, 1).
+fn randFloat() -> float {
+    return random()
+}
+
+// Integer in [lo, hi) — same semantics as native randomInt (hi exclusive when lo < hi).
+fn randInt(lo: int, hi: int) -> int {
+    return randomInt(lo, hi)
+}
+
+// Index in [0, n) or -1 if n <= 0.
+fn randIndex(n: int) -> int {
+    if n <= 0 {
+        return -1
+    }
+    return randomInt(0, n)
+}
+
+// Pick one element or nil if empty.
+fn pick<T>(items: [T]) -> T? {
+    if len(items) == 0 {
+        return nil
+    }
+    let i: int = randomInt(0, len(items))
+    return items[i]
+}

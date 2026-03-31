@@ -114,13 +114,13 @@ fn sumRange(start: int, end: int) -> int {
     return n * sum / 2
 }
 
-// square(x) -> int - x squared
-fn square(x: int) -> int {
+// square(x) -> T - x squared
+fn square<T>(x: T) -> T {
     return x * x
 }
 
-// cube(x) -> int - x cubed
-fn cube(x: int) -> int {
+// cube(x) -> T - x cubed
+fn cube<T>(x: T) -> T {
     return x * x * x
 }
 
@@ -135,8 +135,8 @@ fn lerp(a: float, b: float, t: float) -> float {
     return a + diff * t
 }
 
-// clampf(x, lo, hi) -> float - clamp float to range
-fn clampf(x: float, lo: float, hi: float) -> float {
+// clamp(x, lo, hi) -> T - clamp comparable value to inclusive range
+fn clamp<T>(x: T, lo: T, hi: T) -> T {
     if x < lo {
         return lo
     }
@@ -146,18 +146,66 @@ fn clampf(x: float, lo: float, hi: float) -> float {
     return x
 }
 
-// minf(a, b) -> float - minimum of two floats
-fn minf(a: float, b: float) -> float {
+// minOf(a, b) -> T - minimum of two comparable values
+fn minOf<T>(a: T, b: T) -> T {
     if a < b {
         return a
     }
     return b
 }
 
-// maxf(a, b) -> float - maximum of two floats
-fn maxf(a: float, b: float) -> float {
+// maxOf(a, b) -> T - maximum of two comparable values
+fn maxOf<T>(a: T, b: T) -> T {
     if a > b {
         return a
     }
     return b
+}
+
+// ceilDiv(a, b) -> int - ceiling of a/b for b > 0 (integer division rounds toward +inf)
+fn ceilDiv(a: int, b: int) -> int {
+    if b <= 0 {
+        return 0
+    }
+    return (a + b - 1) / b
+}
+
+// floorDiv(a, b) -> int - floor of a/b (requires b > 0; otherwise returns 0)
+// Uses a <= -1 instead of a < 0 (workaround: a < 0 miscompares for negative a).
+fn floorDiv(a: int, b: int) -> int {
+    if b <= 0 {
+        return 0
+    }
+    let q: int = a / b
+    let r: int = a % b
+    if r != 0 && a <= -1 {
+        return q - 1
+    }
+    return q
+}
+
+// pow(base, exp) -> int - base^exp for exp >= 0 (integer exponentiation)
+fn pow(base: int, exp: int) -> int {
+    if exp <= 0 {
+        return 1
+    }
+    let r: int = 1
+    let i: int = 0
+    while i < exp {
+        r = r * base
+        i = i + 1
+    }
+    return r
+}
+
+// mod(a, m) -> int - remainder in [0, m) for m > 0 (Euclidean modulo)
+fn mod(a: int, m: int) -> int {
+    if m <= 0 {
+        return 0
+    }
+    let r: int = a % m
+    if r <= -1 {
+        r = r + m
+    }
+    return r
 }

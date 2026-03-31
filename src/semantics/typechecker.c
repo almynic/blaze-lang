@@ -2116,6 +2116,18 @@ void initTypeChecker(TypeChecker* checker) {
     // Time functions
     defineNativeFunction(checker, "clock", NULL, 0, createFloatType());
     defineNativeFunction(checker, "time", NULL, 0, createIntType());
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createStringType();
+        params[1] = createIntType();
+        defineNativeFunction(checker, "formatTime", params, 2, createStringType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createStringType();
+        params[1] = createIntType();
+        defineNativeFunction(checker, "formatTimeUtc", params, 2, createStringType());
+    }
 
     // String/Array functions
     {
@@ -2264,6 +2276,17 @@ void initTypeChecker(TypeChecker* checker) {
     }
     {
         Type** params = ALLOCATE(Type*, 1);
+        params[0] = createStringType();
+        defineNativeFunction(checker, "writeStr", params, 1, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createStringType();
+        defineNativeFunction(checker, "writeLine", params, 1, createUnknownType());
+    }
+    defineNativeFunction(checker, "flushOut", NULL, 0, createUnknownType());
+    {
+        Type** params = ALLOCATE(Type*, 1);
         params[0] = createUnknownType();
         defineNativeFunction(checker, "type", params, 1, createStringType());
     }
@@ -2400,7 +2423,17 @@ void initTypeChecker(TypeChecker* checker) {
 
     // Hash map / hash set builtins
     defineNativeFunction(checker, "hashMap", NULL, 0, createUnknownType());
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createIntType();      // capacity
+        defineNativeFunction(checker, "hashMapWithCapacity", params, 1, createUnknownType());
+    }
     defineNativeFunction(checker, "hashSet", NULL, 0, createUnknownType());
+    {
+        Type** params = ALLOCATE(Type*, 1);
+        params[0] = createIntType();      // capacity
+        defineNativeFunction(checker, "hashSetWithCapacity", params, 1, createUnknownType());
+    }
 
     {
         Type** params = ALLOCATE(Type*, 3);
@@ -2408,6 +2441,13 @@ void initTypeChecker(TypeChecker* checker) {
         params[1] = createUnknownType();  // key
         params[2] = createUnknownType();  // value
         defineNativeFunction(checker, "hashMapSet", params, 3, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // map
+        params[1] = createIntType();      // key
+        params[2] = createIntType();      // value
+        defineNativeFunction(checker, "hashMapSetInt", params, 3, createUnknownType());
     }
     {
         Type** params = ALLOCATE(Type*, 2);
@@ -2420,6 +2460,12 @@ void initTypeChecker(TypeChecker* checker) {
         params[0] = createUnknownType();  // map
         params[1] = createUnknownType();  // key
         defineNativeFunction(checker, "hashMapHas", params, 2, createBoolType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // map
+        params[1] = createIntType();      // key
+        defineNativeFunction(checker, "hashMapHasInt", params, 2, createBoolType());
     }
     {
         Type** params = ALLOCATE(Type*, 2);
@@ -2447,12 +2493,59 @@ void initTypeChecker(TypeChecker* checker) {
         params[0] = createUnknownType();  // map
         defineNativeFunction(checker, "hashMapValues", params, 1, createUnknownType());
     }
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // map
+        params[1] = createIntType();      // start
+        params[2] = createIntType();      // end
+        defineNativeFunction(checker, "hashMapFillRange", params, 3, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // map
+        params[1] = createIntType();      // start
+        params[2] = createIntType();      // end
+        defineNativeFunction(checker, "hashMapCountPresentRange", params, 3, createIntType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // map
+        params[1] = createIntType();      // start
+        params[2] = createIntType();      // end
+        defineNativeFunction(checker, "hashMapFillStringKeysRange", params, 3, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // map
+        params[1] = createIntType();      // start
+        params[2] = createIntType();      // end
+        defineNativeFunction(checker, "hashMapCountPresentStringKeysRange", params, 3, createIntType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // map
+        params[1] = createUnknownType();  // keys array
+        defineNativeFunction(checker, "hashMapCountPresentKeys", params, 2, createIntType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // map
+        params[1] = createUnknownType();  // keys
+        params[2] = createUnknownType();  // values
+        defineNativeFunction(checker, "hashMapSetBulk", params, 3, createUnknownType());
+    }
 
     {
         Type** params = ALLOCATE(Type*, 2);
         params[0] = createUnknownType();  // set
         params[1] = createUnknownType();  // value
         defineNativeFunction(checker, "hashSetAdd", params, 2, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 2);
+        params[0] = createUnknownType();  // set
+        params[1] = createIntType();      // value
+        defineNativeFunction(checker, "hashSetAddInt", params, 2, createUnknownType());
     }
     {
         Type** params = ALLOCATE(Type*, 2);
@@ -2480,6 +2573,13 @@ void initTypeChecker(TypeChecker* checker) {
         Type** params = ALLOCATE(Type*, 1);
         params[0] = createUnknownType();  // set
         defineNativeFunction(checker, "hashSetValues", params, 1, createUnknownType());
+    }
+    {
+        Type** params = ALLOCATE(Type*, 3);
+        params[0] = createUnknownType();  // set
+        params[1] = createIntType();      // count
+        params[2] = createIntType();      // mod
+        defineNativeFunction(checker, "hashSetAddModRange", params, 3, createUnknownType());
     }
 }
 

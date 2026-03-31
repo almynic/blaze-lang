@@ -1,0 +1,5 @@
+let t: int = unixSeconds()
+print(len(isoDate(t)) >= 10)
+print(len(isoDateTime(t)) >= 16)
+print(len(nowIso()) >= 16)
+print(startsWith(blazeStamp(), "blaze "))

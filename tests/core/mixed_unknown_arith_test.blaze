@@ -1,0 +1,7 @@
+// randFloat() is typed unknown; / must use mixed numeric path (int or float literal)
+let x: float = randFloat() / 5
+print(x >= 0.0)
+print(x <= 1.0)
+let y: float = randFloat() / 5.0
+print(y >= 0.0)
+print(y <= 1.0)

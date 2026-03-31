@@ -1,0 +1,78 @@
+// Blaze Standard Library — stdin/stdout and file text I/O.
+// Low-level natives: input, writeStr, writeLine, flushOut, readFile, writeFile, appendFile, fileExists, deleteFile.
+
+// Read one line from stdin (no prompt).
+fn readLine() -> string {
+    return input("")
+}
+
+// Read one line after printing prompt (no trailing newline added by us; input() prints prompt as-is).
+fn readLinePrompt(prompt: string) -> string {
+    return input(prompt)
+}
+
+// Print any value with newline (uses toString).
+fn println<T>(value: T) {
+    writeLine(toString(value))
+}
+
+// Print string with newline.
+fn printStr(s: string) {
+    writeLine(s)
+}
+
+// Print any value without newline.
+fn writeValue<T>(value: T) {
+    writeStr(toString(value))
+}
+
+// Write raw string to stdout without newline (alias for discoverability).
+fn writeString(s: string) {
+    writeStr(s)
+}
+
+fn flushStdout() {
+    flushOut()
+}
+
+// Read entire file as string; missing/unreadable path yields empty string.
+fn readText(path: string) -> string {
+    let content: string = readFile(path) ?? ""
+    return content
+}
+
+// Read file and split into lines (same byte split as std/string lines(); real newline in literal).
+fn readLines(path: string) -> [string] {
+    let nl: string = "
+"
+    return split(readText(path), nl)
+}
+
+fn writeText(path: string, content: string) -> bool {
+    return writeFile(path, content)
+}
+
+// Write lines joined with newline (no trailing newline after last line unless parts end empty).
+fn writeLines(path: string, parts: [string]) -> bool {
+    let nl: string = "
+"
+    return writeText(path, join(parts, nl))
+}
+
+fn appendText(path: string, content: string) -> bool {
+    return appendFile(path, content)
+}
+
+fn appendLines(path: string, parts: [string]) -> bool {
+    let nl: string = "
+"
+    return appendText(path, join(parts, nl))
+}
+
+fn pathExists(path: string) -> bool {
+    return fileExists(path)
+}
+
+fn removeFile(path: string) -> bool {
+    return deleteFile(path)
+}

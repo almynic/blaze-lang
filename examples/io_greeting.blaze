@@ -1,0 +1,18 @@
+// Example: standard I/O (std/io via prelude) — prompt, println, and file text helpers.
+//
+// Run from the repo root so the prelude can load:
+//   ./build/blaze examples/io_greeting.blaze
+//
+// Pipe a name (optional):
+//   printf "Ada\n" | ./build/blaze examples/io_greeting.blaze
+
+let name: string = readLinePrompt("Your name: ")
+println("Hello, " + name + "!")
+
+let notePath: string = "/tmp/blaze_io_example.txt"
+let written: bool = writeText(notePath, "note for " + name)
+println(written)
+
+let saved: string = readText(notePath)
+println("read back: " + saved)
+//println(removeFile(notePath))

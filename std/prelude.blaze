@@ -5,15 +5,19 @@
 
 // Math functions (from std/math)
 import { sign, isEven, isOdd, gcd, lcm, factorial, fib, isPrime } from "std/math"
-import { square, cube, sumRange, lerp, clampf, minf, maxf } from "std/math"
+import { square, cube, sumRange, lerp, clamp, minOf, maxOf, ceilDiv, floorDiv, pow, mod } from "std/math"
 
 // Array functions (from std/array)
 import { sum, product, average, range, fill, copy, take, drop } from "std/array"
-import { map, filter, reduce, forEach, any, all, find, findIndex } from "std/array"
+import { map, filter, reduce, forEach, any, all, find, findIndex, extend } from "std/array"
+import { singleton, prepend, rest, allButLast, reversed, intersperse } from "std/array"
 
 // String functions (from std/string)
-import { contains, isEmpty, isBlank, padLeft, padRight, center } from "std/string"
-import { countOccurrences, reverseString, capitalize } from "std/string"
+import { contains, isEmpty, isBlank, padLeft, padRight, center, lines, words, newline, trimPrefix, trimSuffix, truncate } from "std/string"
+import { countOccurrences, reverseString, capitalize, joinStrings, joinLines, orEmpty } from "std/string"
+
+// I/O (from std/io)
+import { readLine, readLinePrompt, println, printStr, writeValue, writeString, flushStdout, readText, readLines, writeText, writeLines, appendText, appendLines, pathExists, removeFile } from "std/io"
 
 // Collections helpers (from std/collections)
 import { setHas, unique, setUnion, setIntersect, setDiff, flatten, chunk } from "std/collections"
@@ -24,3 +28,21 @@ import { newHashSet, hsAdd, hsHas, hsDelete, hsSize, hsClear, hsValues } from "s
 import { emptyMap, assoc, get, getOr, hasKey, dissoc, mapCount, mapEmpty } from "std/collections"
 import { keysOf, valuesOf, clearMap, emptySet, conj, containsKey, disj, setCount } from "std/collections"
 import { setEmpty, setItems, clearSet, toSet } from "std/collections"
+
+// Random (std/random)
+import { randFloat, randInt, randIndex, pick } from "std/random"
+
+// Time (std/time)
+import { unixSeconds, nowUnix, cpuSeconds, formatLocal, formatUtc } from "std/time"
+
+// Date helpers (std/date)
+import { isoDate, isoDateTime, isoDateTimeUtc, isoDateTimeCompact, nowIso, nowIsoUtc, blazeStamp } from "std/date"
+
+// ASCII (std/ascii)
+import { isAsciiDigit, isAsciiAlpha, isAsciiAlphanumeric, isAsciiWhitespace } from "std/ascii"
+
+// Paths (std/path)
+import { joinPath, basename, parentDir } from "std/path"
+
+// Debug (std/debug)
+import { trace, traceBool } from "std/debug"

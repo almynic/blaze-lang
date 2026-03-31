@@ -90,14 +90,63 @@ fn capitalize(s: string) -> string {
     return concat(toUpper(charAt(s, 0)), substr(s, 1, len(s) - 1))
 }
 
-// lines(s) -> [string] - split string into lines (Note: returns array, may not work without proper array of strings support)
-// Commented out for now as we may not have [string] type support
-// fn lines(s: string) -> [string] {
-//     return split(s, "\n")
-// }
+// Line separator (real newline; Blaze does not interpret "\\n" in literals as newline).
+fn newline() -> string {
+    return "
+"
+}
 
-// words(s) -> [string] - split string into words
-// Commented out for now as we may not have [string] type support
-// fn words(s: string) -> [string] {
-//     return split(s, " ")
-// }
+// lines(s) -> [string] - split on newline characters
+fn lines(s: string) -> [string] {
+    return split(s, newline())
+}
+
+// words(s) -> [string] - split on ASCII spaces (single-byte 0x20)
+fn words(s: string) -> [string] {
+    return split(s, " ")
+}
+
+// trimPrefix(s, prefix) -> string - drop leading prefix if present
+fn trimPrefix(s: string, prefix: string) -> string {
+    if startsWith(s, prefix) {
+        return substr(s, len(prefix), len(s) - len(prefix))
+    }
+    return s
+}
+
+// trimSuffix(s, suffix) -> string - drop trailing suffix if present
+fn trimSuffix(s: string, suffix: string) -> string {
+    if endsWith(s, suffix) {
+        return substr(s, 0, len(s) - len(suffix))
+    }
+    return s
+}
+
+// truncate(s, maxLen) -> string - at most maxLen bytes (see UTF-8 note in docs)
+fn truncate(s: string, maxLen: int) -> string {
+    if maxLen <= 0 {
+        return ""
+    }
+    if len(s) <= maxLen {
+        return s
+    }
+    return substr(s, 0, maxLen)
+}
+
+// joinStrings(parts, sep) -> string - delegates to join()
+fn joinStrings(parts: [string], sep: string) -> string {
+    return join(parts, sep)
+}
+
+// joinLines(parts) -> string - join with newline between parts
+fn joinLines(parts: [string]) -> string {
+    return join(parts, newline())
+}
+
+// orEmpty(s, fallback) -> fallback when s is empty
+fn orEmpty(s: string, fallback: string) -> string {
+    if isEmpty(s) {
+        return fallback
+    }
+    return s
+}

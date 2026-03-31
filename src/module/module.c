@@ -113,6 +113,27 @@ char* readFile(const char* path) {
 
 char* resolveModulePath(ModuleSystem* system, const char* importPath) {
     char fullPath[1024];
+    char dottedPath[1024];
+    const char* normalizedPath = importPath;
+    bool hasDotSeparator = false;
+
+    // Support dotted module syntax (e.g. "std.math") in addition to slash paths.
+    // Keep absolute paths and relative filesystem paths unchanged.
+    if (importPath[0] != '/' && strchr(importPath, '/') == NULL) {
+        size_t len = strlen(importPath);
+        if (len < sizeof(dottedPath)) {
+            memcpy(dottedPath, importPath, len + 1);
+            for (size_t i = 0; i < len; i++) {
+                if (dottedPath[i] == '.') {
+                    dottedPath[i] = '/';
+                    hasDotSeparator = true;
+                }
+            }
+            if (hasDotSeparator) {
+                normalizedPath = dottedPath;
+            }
+        }
+    }
 
     // If it's an absolute path, use it directly
     if (importPath[0] == '/') {
@@ -137,6 +158,16 @@ char* resolveModulePath(ModuleSystem* system, const char* importPath) {
         if (fileExists(fullPath)) {
             return strdup(fullPath);
         }
+        if (hasDotSeparator) {
+            snprintf(fullPath, sizeof(fullPath), "%s/%s", system->basePath, normalizedPath);
+            if (fileExists(fullPath)) {
+                return strdup(fullPath);
+            }
+            snprintf(fullPath, sizeof(fullPath), "%s/%s.blaze", system->basePath, normalizedPath);
+            if (fileExists(fullPath)) {
+                return strdup(fullPath);
+            }
+        }
     }
 
     // Try each search path
@@ -148,6 +179,16 @@ char* resolveModulePath(ModuleSystem* system, const char* importPath) {
         snprintf(fullPath, sizeof(fullPath), "%s/%s.blaze", system->searchPaths[i], importPath);
         if (fileExists(fullPath)) {
             return strdup(fullPath);
+        }
+        if (hasDotSeparator) {
+            snprintf(fullPath, sizeof(fullPath), "%s/%s", system->searchPaths[i], normalizedPath);
+            if (fileExists(fullPath)) {
+                return strdup(fullPath);
+            }
+            snprintf(fullPath, sizeof(fullPath), "%s/%s.blaze", system->searchPaths[i], normalizedPath);
+            if (fileExists(fullPath)) {
+                return strdup(fullPath);
+            }
         }
     }
 

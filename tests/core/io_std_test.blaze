@@ -1,0 +1,12 @@
+// std/io via prelude: string stdout + file helpers
+let tmp: string = "/tmp/blaze_io_std_test.txt"
+
+writeString("ab")
+writeLine("cd")
+flushStdout()
+println(99)
+
+let w: bool = writeText(tmp, "hello")
+print(w)
+print(readText(tmp))
+print(removeFile(tmp))

@@ -1,0 +1,45 @@
+// Real-world collections example:
+// Aggregate order totals per customer and count unique sales regions.
+
+let customers: [string] = ["alice", "bob", "alice", "carol", "bob", "alice"]
+let amounts: [int] = [120, 80, 40, 200, 35, 25]
+let regions: [string] = ["us", "eu", "us", "apac", "eu", "latam"]
+
+let totals = emptyMap()
+let uniqueRegions = emptySet()
+
+forEach(range(0, len(customers)), (idx: int) => {
+    let customer: string = customers[idx]
+    let amount: int = amounts[idx]
+    let runningTotal: int = getOr(totals, customer, 0)
+    assoc(totals, customer, runningTotal + amount)
+
+    conj(uniqueRegions, regions[idx])
+})
+
+print("customer_count")
+print(mapCount(totals))
+
+print("region_count")
+print(setCount(uniqueRegions))
+
+print("alice_total")
+print(getOr(totals, "alice", 0))
+
+print("bob_total")
+print(getOr(totals, "bob", 0))
+
+// Build a VIP set: customers with total spend >= 150.
+let vip = emptySet()
+let candidateCustomers: [string] = ["alice", "bob", "carol"]
+forEach(candidateCustomers, (customer: string) => {
+    let spend: int = getOr(totals, customer, 0)
+    if spend >= 150 {
+        conj(vip, customer)
+    }
+})
+
+print("vip_count")
+print(setCount(vip))
+print("alice_is_vip")
+print(containsKey(vip, "alice"))

@@ -562,24 +562,30 @@ static void compileBinary(Expr* expr) {
     compileExpr(binary->right);
 
     bool isFloat = (binary->type && binary->type->kind == TYPE_FLOAT);
+    bool isUnknown = (!binary->type || binary->type->kind == TYPE_UNKNOWN);
     bool isString = (binary->type && binary->type->kind == TYPE_STRING);
 
     switch (binary->op.type) {
         case TOKEN_PLUS:
             if (isString) {
                 emitByte(expr->line, OP_CONCAT);
+            } else if (isUnknown) {
+                emitByte(expr->line, OP_ADD_MIXED);
             } else {
                 emitByte(expr->line, isFloat ? OP_ADD_FLOAT : OP_ADD_INT);
             }
             break;
         case TOKEN_MINUS:
-            emitByte(expr->line, isFloat ? OP_SUBTRACT_FLOAT : OP_SUBTRACT_INT);
+            emitByte(expr->line, isUnknown ? OP_SUBTRACT_MIXED
+                                         : (isFloat ? OP_SUBTRACT_FLOAT : OP_SUBTRACT_INT));
             break;
         case TOKEN_STAR:
-            emitByte(expr->line, isFloat ? OP_MULTIPLY_FLOAT : OP_MULTIPLY_INT);
+            emitByte(expr->line, isUnknown ? OP_MULTIPLY_MIXED
+                                           : (isFloat ? OP_MULTIPLY_FLOAT : OP_MULTIPLY_INT));
             break;
         case TOKEN_SLASH:
-            emitByte(expr->line, isFloat ? OP_DIVIDE_FLOAT : OP_DIVIDE_INT);
+            emitByte(expr->line, isUnknown ? OP_DIVIDE_MIXED
+                                           : (isFloat ? OP_DIVIDE_FLOAT : OP_DIVIDE_INT));
             break;
         case TOKEN_PERCENT:
             emitByte(expr->line, OP_MODULO_INT);

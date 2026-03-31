@@ -152,6 +152,18 @@ ObjArray* newArray(void) {
     return array;
 }
 
+ObjHashMap* newHashMapObj(void) {
+    ObjHashMap* map = ALLOCATE_OBJ(ObjHashMap, OBJ_HASH_MAP);
+    initValueTable(&map->table);
+    return map;
+}
+
+ObjHashSet* newHashSetObj(void) {
+    ObjHashSet* set = ALLOCATE_OBJ(ObjHashSet, OBJ_HASH_SET);
+    initValueTable(&set->table);
+    return set;
+}
+
 void arrayPush(ObjArray* array, Value value) {
     if (array->capacity < array->count + 1) {
         int oldCapacity = array->capacity;
@@ -351,6 +363,225 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
 }
 
 // ============================================================================
+// Value-keyed Hash Table (for hash map/set builtins)
+// ============================================================================
+
+static uint32_t hashBits(uint64_t x) {
+    // SplitMix64 finalizer (32-bit output)
+    x ^= x >> 30;
+    x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27;
+    x *= 0x94d049bb133111ebULL;
+    x ^= x >> 31;
+    return (uint32_t)(x ^ (x >> 32));
+}
+
+static uint32_t hashValue(Value value) {
+    if (IS_NIL(value)) return 0x9e3779b9u;
+    if (IS_BOOL(value)) return AS_BOOL(value) ? 0x85ebca6bu : 0xc2b2ae35u;
+    if (IS_INT(value)) return hashBits((uint64_t)AS_INT(value));
+    if (IS_FLOAT(value)) {
+        union { uint64_t bits; double num; } d;
+        d.num = AS_FLOAT(value);
+        return hashBits(d.bits);
+    }
+    if (IS_STRING(value)) {
+        return AS_STRING(value)->hash;
+    }
+    if (IS_OBJ(value)) {
+        return hashBits((uint64_t)(uintptr_t)AS_OBJ(value));
+    }
+    return hashBits((uint64_t)value);
+}
+
+static bool valueKeyEquals(Value a, Value b) {
+    if (a == b) return true;
+    if (IS_NIL(a) || IS_NIL(b)) return false;
+    if (IS_BOOL(a) || IS_BOOL(b)) return false;
+    if (IS_INT(a) && IS_INT(b)) return AS_INT(a) == AS_INT(b);
+    if (IS_FLOAT(a) && IS_FLOAT(b)) return AS_FLOAT(a) == AS_FLOAT(b);
+    if (IS_INT(a) || IS_INT(b) || IS_FLOAT(a) || IS_FLOAT(b)) return false;
+    if (IS_STRING(a) && IS_STRING(b)) {
+        ObjString* sa = AS_STRING(a);
+        ObjString* sb = AS_STRING(b);
+        return sa->hash == sb->hash &&
+               sa->length == sb->length &&
+               memcmp(sa->chars, sb->chars, (size_t)sa->length) == 0;
+    }
+    if (IS_OBJ(a) && IS_OBJ(b)) return AS_OBJ(a) == AS_OBJ(b);
+    return false;
+}
+
+// Forward declaration for generic probe path.
+static ValueEntry* findValueEntry(ValueEntry* entries, int capacity, Value key);
+
+static ValueEntry* findValueEntryString(ObjString* key, ValueEntry* entries, int capacity) {
+    uint32_t index = key->hash & (capacity - 1);
+    ValueEntry* tombstone = NULL;
+
+    for (;;) {
+        ValueEntry* entry = &entries[index];
+        if (entry->state == 0) {
+            return tombstone != NULL ? tombstone : entry;
+        }
+        if (entry->state == 1) {
+            if (tombstone == NULL) tombstone = entry;
+        } else if (IS_STRING(entry->key)) {
+            ObjString* ek = AS_STRING(entry->key);
+            if (ek == key) return entry;
+            if (ek->hash == key->hash &&
+                ek->length == key->length &&
+                memcmp(ek->chars, key->chars, (size_t)key->length) == 0) {
+                return entry;
+            }
+        }
+        index = (index + 1) & (capacity - 1);
+    }
+}
+
+static ValueEntry* findValueEntryObj(Obj* key, ValueEntry* entries, int capacity) {
+    uint32_t index = hashBits((uint64_t)(uintptr_t)key) & (capacity - 1);
+    ValueEntry* tombstone = NULL;
+
+    for (;;) {
+        ValueEntry* entry = &entries[index];
+        if (entry->state == 0) {
+            return tombstone != NULL ? tombstone : entry;
+        }
+        if (entry->state == 1) {
+            if (tombstone == NULL) tombstone = entry;
+        } else if (IS_OBJ(entry->key) && AS_OBJ(entry->key) == key) {
+            return entry;
+        }
+        index = (index + 1) & (capacity - 1);
+    }
+}
+
+static ValueEntry* findValueEntryInt(int64_t key, ValueEntry* entries, int capacity) {
+    uint32_t index = hashBits((uint64_t)key) & (capacity - 1);
+    ValueEntry* tombstone = NULL;
+
+    for (;;) {
+        ValueEntry* entry = &entries[index];
+        if (entry->state == 0) {
+            return tombstone != NULL ? tombstone : entry;
+        }
+        if (entry->state == 1) {
+            if (tombstone == NULL) tombstone = entry;
+        } else if (IS_INT(entry->key) && (int64_t)AS_INT(entry->key) == key) {
+            return entry;
+        }
+        index = (index + 1) & (capacity - 1);
+    }
+}
+
+static ValueEntry* findValueEntryForKey(Value key, ValueEntry* entries, int capacity) {
+    if (IS_STRING(key)) return findValueEntryString(AS_STRING(key), entries, capacity);
+    if (IS_OBJ(key)) return findValueEntryObj(AS_OBJ(key), entries, capacity);
+    if (IS_INT(key)) return findValueEntryInt(AS_INT(key), entries, capacity);
+    return findValueEntry(entries, capacity, key);
+}
+
+void initValueTable(ValueTable* table) {
+    table->count = 0;
+    table->capacity = 0;
+    table->entries = NULL;
+}
+
+void freeValueTable(ValueTable* table) {
+    FREE_ARRAY(ValueEntry, table->entries, table->capacity);
+    initValueTable(table);
+}
+
+static ValueEntry* findValueEntry(ValueEntry* entries, int capacity, Value key) {
+    uint32_t index = hashValue(key) & (capacity - 1);
+    ValueEntry* tombstone = NULL;
+
+    for (;;) {
+        ValueEntry* entry = &entries[index];
+        if (entry->state == 0) {  // empty
+            return tombstone != NULL ? tombstone : entry;
+        }
+        if (entry->state == 1) {  // tombstone
+            if (tombstone == NULL) tombstone = entry;
+        } else if (valueKeyEquals(entry->key, key)) {
+            return entry;
+        }
+        index = (index + 1) & (capacity - 1);
+    }
+}
+
+static void adjustValueTableCapacity(ValueTable* table, int capacity) {
+    ValueEntry* entries = ALLOCATE(ValueEntry, capacity);
+    for (int i = 0; i < capacity; i++) {
+        entries[i].state = 0;
+        entries[i].key = NIL_VAL;
+        entries[i].value = NIL_VAL;
+    }
+
+    table->count = 0;
+    for (int i = 0; i < table->capacity; i++) {
+        ValueEntry* src = &table->entries[i];
+        if (src->state != 2) continue;
+
+        ValueEntry* dst = findValueEntry(entries, capacity, src->key);
+        dst->state = 2;
+        dst->key = src->key;
+        dst->value = src->value;
+        table->count++;
+    }
+
+    FREE_ARRAY(ValueEntry, table->entries, table->capacity);
+    table->entries = entries;
+    table->capacity = capacity;
+}
+
+bool valueTableGet(ValueTable* table, Value key, Value* value) {
+    if (table->count == 0) return false;
+    ValueEntry* entry = findValueEntryForKey(key, table->entries, table->capacity);
+    if (entry->state != 2) return false;
+    *value = entry->value;
+    return true;
+}
+
+bool valueTableSet(ValueTable* table, Value key, Value value) {
+    if (table->count + 1 > table->capacity * TABLE_MAX_LOAD) {
+        int capacity = GROW_CAPACITY(table->capacity);
+        adjustValueTableCapacity(table, capacity);
+    }
+
+    ValueEntry* entry = findValueEntryForKey(key, table->entries, table->capacity);
+    bool isNewKey = entry->state != 2;
+    if (isNewKey) table->count++;
+
+    entry->state = 2;
+    entry->key = key;
+    entry->value = value;
+    return isNewKey;
+}
+
+void valueTableReserve(ValueTable* table, int minEntries) {
+    if (minEntries <= 0) return;
+
+    int needed = (int)((double)minEntries / TABLE_MAX_LOAD) + 1;
+    int capacity = 8;
+    while (capacity < needed) capacity <<= 1;
+    if (capacity <= table->capacity) return;
+    adjustValueTableCapacity(table, capacity);
+}
+
+bool valueTableDelete(ValueTable* table, Value key) {
+    if (table->count == 0) return false;
+    ValueEntry* entry = findValueEntryForKey(key, table->entries, table->capacity);
+    if (entry->state != 2) return false;
+
+    entry->state = 1;  // tombstone
+    entry->key = NIL_VAL;
+    entry->value = NIL_VAL;
+    return true;
+}
+
+// ============================================================================
 // Class Objects
 // ============================================================================
 
@@ -411,6 +642,12 @@ void printObject(Value value) {
             printf("]");
             break;
         }
+        case OBJ_HASH_MAP:
+            printf("<hashmap>");
+            break;
+        case OBJ_HASH_SET:
+            printf("<hashset>");
+            break;
         case OBJ_FUNCTION:
             printFunction(AS_FUNCTION(value));
             break;
@@ -451,6 +688,18 @@ static void freeObject(Obj* object) {
             ObjArray* array = (ObjArray*)object;
             FREE_ARRAY(Value, array->elements, array->capacity);
             FREE(ObjArray, object);
+            break;
+        }
+        case OBJ_HASH_MAP: {
+            ObjHashMap* map = (ObjHashMap*)object;
+            freeValueTable(&map->table);
+            FREE(ObjHashMap, object);
+            break;
+        }
+        case OBJ_HASH_SET: {
+            ObjHashSet* set = (ObjHashSet*)object;
+            freeValueTable(&set->table);
+            FREE(ObjHashSet, object);
             break;
         }
         case OBJ_FUNCTION: {
@@ -567,6 +816,25 @@ static void blackenObject(Obj* object) {
             ObjArray* array = (ObjArray*)object;
             for (int i = 0; i < array->count; i++) {
                 markValue(array->elements[i]);
+            }
+            break;
+        }
+        case OBJ_HASH_MAP: {
+            ObjHashMap* map = (ObjHashMap*)object;
+            for (int i = 0; i < map->table.capacity; i++) {
+                ValueEntry* entry = &map->table.entries[i];
+                if (entry->state != 2) continue;
+                markValue(entry->key);
+                markValue(entry->value);
+            }
+            break;
+        }
+        case OBJ_HASH_SET: {
+            ObjHashSet* set = (ObjHashSet*)object;
+            for (int i = 0; i < set->table.capacity; i++) {
+                ValueEntry* entry = &set->table.entries[i];
+                if (entry->state != 2) continue;
+                markValue(entry->key);
             }
             break;
         }

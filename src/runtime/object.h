@@ -12,6 +12,8 @@
 typedef enum {
     OBJ_STRING,
     OBJ_ARRAY,
+    OBJ_HASH_MAP,
+    OBJ_HASH_SET,
     OBJ_FUNCTION,
     OBJ_NATIVE,
     OBJ_CLOSURE,
@@ -47,6 +49,28 @@ typedef struct {
     int capacity;
     Value* elements;
 } ObjArray;
+
+typedef struct {
+    uint8_t state;  // 0=empty, 1=tombstone, 2=occupied
+    Value key;
+    Value value;
+} ValueEntry;
+
+typedef struct {
+    int count;
+    int capacity;
+    ValueEntry* entries;
+} ValueTable;
+
+typedef struct {
+    Obj obj;
+    ValueTable table;
+} ObjHashMap;
+
+typedef struct {
+    Obj obj;
+    ValueTable table;
+} ObjHashSet;
 
 // Function object
 typedef struct {
@@ -105,6 +129,12 @@ bool tableSet(Table* table, ObjString* key, Value value);
 bool tableDelete(Table* table, ObjString* key);
 void tableAddAll(Table* from, Table* to);
 ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t hash);
+void initValueTable(ValueTable* table);
+void freeValueTable(ValueTable* table);
+bool valueTableGet(ValueTable* table, Value key, Value* value);
+bool valueTableSet(ValueTable* table, Value key, Value value);
+bool valueTableDelete(ValueTable* table, Value key);
+void valueTableReserve(ValueTable* table, int minEntries);
 
 // ============================================================================
 // Class and Instance Objects
@@ -141,6 +171,8 @@ typedef struct {
 
 #define IS_STRING(value)       isObjType(value, OBJ_STRING)
 #define IS_ARRAY(value)        isObjType(value, OBJ_ARRAY)
+#define IS_HASH_MAP(value)     isObjType(value, OBJ_HASH_MAP)
+#define IS_HASH_SET(value)     isObjType(value, OBJ_HASH_SET)
 #define IS_FUNCTION(value)     isObjType(value, OBJ_FUNCTION)
 #define IS_NATIVE(value)       isObjType(value, OBJ_NATIVE)
 #define IS_CLOSURE(value)      isObjType(value, OBJ_CLOSURE)
@@ -151,6 +183,8 @@ typedef struct {
 #define AS_STRING(value)       ((ObjString*)AS_OBJ(value))
 #define AS_CSTRING(value)      (((ObjString*)AS_OBJ(value))->chars)
 #define AS_ARRAY(value)        ((ObjArray*)AS_OBJ(value))
+#define AS_HASH_MAP(value)     ((ObjHashMap*)AS_OBJ(value))
+#define AS_HASH_SET(value)     ((ObjHashSet*)AS_OBJ(value))
 #define AS_FUNCTION(value)     ((ObjFunction*)AS_OBJ(value))
 #define AS_NATIVE(value)       (((ObjNative*)AS_OBJ(value))->function)
 #define AS_NATIVE_OBJ(value)   ((ObjNative*)AS_OBJ(value))
@@ -170,6 +204,8 @@ static inline bool isObjType(Value value, ObjType type) {
 ObjString* copyString(const char* chars, int length);
 ObjString* takeString(char* chars, int length);
 ObjArray* newArray(void);
+ObjHashMap* newHashMapObj(void);
+ObjHashSet* newHashSetObj(void);
 void arrayPush(ObjArray* array, Value value);
 Value arrayPop(ObjArray* array);
 ObjFunction* newFunction(void);
