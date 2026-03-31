@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `setBreakpoint` (`line`, optional `condition`)
   - `removeBreakpoint` (`line`)
 - Debugger fixture for protocol smoke tests: `tests/debugger/debug_protocol_basic.blaze`.
+- Python smoke harness: `tests/debugger/debug_protocol_smoke.py`.
 
 ### March 31, 2026 - Debugger stepping across frame transitions
 

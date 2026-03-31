@@ -52,6 +52,9 @@ cmake --build build
 # Rich conditional breakpoint examples
 ./build/blaze --debug --break-if 24:"line>=24 && depth>=1" your_file.blaze
 ./build/blaze --debug --break-if 36:"hit>=2 && local[0]==42" your_file.blaze
+
+# Debug via JSON-line protocol (tooling integration)
+./build/blaze --debug-protocol your_file.blaze
 ```
 
 ### Hello World
@@ -358,6 +361,9 @@ Run the test suite:
 # Individual feature tests
 ./build/blaze tests/spread/spread_operator.blaze
 ./build/blaze tests/optional/optional_types.blaze
+
+# Debugger protocol smoke test
+python3 tests/debugger/debug_protocol_smoke.py
 ```
 
 The `--test` runner repeatedly compiles and executes snippets in a fresh VM; use it after VM or compiler changes to catch integration issues early.
