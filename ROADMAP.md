@@ -111,8 +111,8 @@ The core compiler is complete and has excellent developer experience. These are 
 - ✅ Step-through execution (`step`, `next`, `continue`)
 - ✅ Variable inspection at breakpoints (`locals` frame slots)
 - ✅ Call stack visualization (`bt`)
-- ⏳ Step out
-- ⏳ Rich expression-based conditional breakpoints
+- ✅ Step out (`out` / `o`)
+- ✅ Richer conditional breakpoints (`hit`, `line`, `depth`, `local[N]`, `&&`)
 
 #### Implementation Ideas
 - Add debug info to bytecode (line mappings)

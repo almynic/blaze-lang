@@ -48,6 +48,10 @@ cmake --build build
 
 # Debug with startup breakpoints
 ./build/blaze --debug --break 12 --break-if 24:hit>=3 your_file.blaze
+
+# Rich conditional breakpoint examples
+./build/blaze --debug --break-if 24:"line>=24 && depth>=1" your_file.blaze
+./build/blaze --debug --break-if 36:"hit>=2 && local[0]==42" your_file.blaze
 ```
 
 ### Hello World

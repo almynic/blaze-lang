@@ -12,9 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 #### Added
 - **Interactive debugger loop** in VM execution with commands:
-  - `break <line>` and `break <line> if hit>=N` (conditional by hit count)
+  - `break <line>` and `break <line> if <cond>` (conditional breakpoints)
   - `delete <line>`, `breakpoints`
-  - `step` / `next` / `continue`
+  - `step` / `next` / `out` / `continue`
   - `bt` (stack trace) and `locals` (frame slots)
 - **CLI debug mode** in `main.c`:
   - `--debug` to enable debugger for script execution
@@ -25,10 +25,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `tests/debugger/debug_try_finally_step.blaze`
   - `tests/debugger/debug_closure_step.blaze`
   - `tests/debugger/debug_generic_inst_step.blaze`
+  - `tests/debugger/debug_step_out.blaze`
+  - `tests/debugger/debug_conditional_breakpoint.blaze`
 
 #### Changed
 - **Runtime stack traces** now include bytecode offset in addition to source line (`[line X, offset Y]`) for better diagnostics.
 - Prelude/module import execution runs with debugger temporarily disabled so `--debug` pauses in user script code instead of prelude internals.
+- Debugger conditional breakpoints now support conjunctions (`&&`) and runtime predicates such as `line`, `depth`, and `local[N]` in addition to `hit` (for example: `hit>=2 && local[1]==42`).
 
 ### March 31, 2026 - Try/finally: execute finally on return
 

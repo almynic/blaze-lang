@@ -1,0 +1,7 @@
+fn run(n: int) {
+    let value: int = n * 2
+    print(value)
+}
+
+run(10)
+run(21)

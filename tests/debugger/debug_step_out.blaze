@@ -1,0 +1,12 @@
+fn inner(n: int) -> int {
+    let x: int = n + 1
+    return x * 2
+}
+
+fn outer(v: int) -> int {
+    let a: int = v + 10
+    let b: int = inner(a)
+    return b + 3
+}
+
+print(outer(5))

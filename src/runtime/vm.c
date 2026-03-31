@@ -92,30 +92,196 @@ static int currentFrameLine(const CallFrame* frame) {
     return function->chunk.lines[rawInstruction];
 }
 
-static bool evaluateBreakpointCondition(DebugBreakpoint* bp) {
-    // Minimal condition syntax: "hit==N", "hit>=N", "hit<=N", "hit>N", "hit<N".
-    if (!bp->hasCondition) return true;
-    const char* c = bp->condition;
-    while (*c == ' ') c++;
-    if (strncmp(c, "hit", 3) != 0) return true;
-    c += 3;
-    while (*c == ' ') c++;
+typedef enum {
+    BP_OP_EQ,
+    BP_OP_NE,
+    BP_OP_LT,
+    BP_OP_LE,
+    BP_OP_GT,
+    BP_OP_GE,
+} BreakpointOp;
 
-    char op1 = *c++;
-    char op2 = '\0';
-    if (*c == '=') {
-        op2 = '=';
-        c++;
+static void skipSpaces(const char** p) {
+    while (**p == ' ' || **p == '\t') (*p)++;
+}
+
+static bool parseBreakpointOp(const char** p, BreakpointOp* outOp) {
+    if (strncmp(*p, "==", 2) == 0) {
+        *outOp = BP_OP_EQ;
+        *p += 2;
+        return true;
     }
-    while (*c == ' ') c++;
-    if (!isdigit((unsigned char)*c)) return true;
-    long rhs = strtol(c, NULL, 10);
+    if (strncmp(*p, "!=", 2) == 0) {
+        *outOp = BP_OP_NE;
+        *p += 2;
+        return true;
+    }
+    if (strncmp(*p, ">=", 2) == 0) {
+        *outOp = BP_OP_GE;
+        *p += 2;
+        return true;
+    }
+    if (strncmp(*p, "<=", 2) == 0) {
+        *outOp = BP_OP_LE;
+        *p += 2;
+        return true;
+    }
+    if (**p == '>') {
+        *outOp = BP_OP_GT;
+        (*p)++;
+        return true;
+    }
+    if (**p == '<') {
+        *outOp = BP_OP_LT;
+        (*p)++;
+        return true;
+    }
+    return false;
+}
 
-    if (op1 == '=' && op2 == '=') return bp->hitCount == rhs;
-    if (op1 == '>' && op2 == '=') return bp->hitCount >= rhs;
-    if (op1 == '<' && op2 == '=') return bp->hitCount <= rhs;
-    if (op1 == '>') return bp->hitCount > rhs;
-    if (op1 == '<') return bp->hitCount < rhs;
+static bool compareNumbers(double lhs, BreakpointOp op, double rhs) {
+    switch (op) {
+        case BP_OP_EQ: return lhs == rhs;
+        case BP_OP_NE: return lhs != rhs;
+        case BP_OP_LT: return lhs < rhs;
+        case BP_OP_LE: return lhs <= rhs;
+        case BP_OP_GT: return lhs > rhs;
+        case BP_OP_GE: return lhs >= rhs;
+    }
+    return false;
+}
+
+static bool compareValues(Value lhs, BreakpointOp op, Value rhs) {
+    if (op == BP_OP_EQ) return valuesEqual(lhs, rhs);
+    if (op == BP_OP_NE) return !valuesEqual(lhs, rhs);
+    if (IS_NUMBER(lhs) && IS_NUMBER(rhs)) {
+        return compareNumbers(AS_NUMBER(lhs), op, AS_NUMBER(rhs));
+    }
+    if (IS_STRING(lhs) && IS_STRING(rhs)) {
+        int cmp = strcmp(AS_CSTRING(lhs), AS_CSTRING(rhs));
+        switch (op) {
+            case BP_OP_LT: return cmp < 0;
+            case BP_OP_LE: return cmp <= 0;
+            case BP_OP_GT: return cmp > 0;
+            case BP_OP_GE: return cmp >= 0;
+            case BP_OP_EQ:
+            case BP_OP_NE:
+                break;
+        }
+    }
+    return false;
+}
+
+static bool parseConditionRhsValue(const char** p, Value* out) {
+    skipSpaces(p);
+    if (**p == '"') {
+        const char* start = ++(*p);
+        while (**p != '\0' && **p != '"') (*p)++;
+        if (**p != '"') return false;
+        int len = (int)(*p - start);
+        *out = OBJ_VAL(copyString(start, len));
+        (*p)++;
+        return true;
+    }
+    if (strncmp(*p, "true", 4) == 0 && !isalnum((unsigned char)(*p)[4]) && (*p)[4] != '_') {
+        *out = TRUE_VAL;
+        *p += 4;
+        return true;
+    }
+    if (strncmp(*p, "false", 5) == 0 && !isalnum((unsigned char)(*p)[5]) && (*p)[5] != '_') {
+        *out = FALSE_VAL;
+        *p += 5;
+        return true;
+    }
+    if (strncmp(*p, "nil", 3) == 0 && !isalnum((unsigned char)(*p)[3]) && (*p)[3] != '_') {
+        *out = NIL_VAL;
+        *p += 3;
+        return true;
+    }
+
+    char* end = NULL;
+    double asDouble = strtod(*p, &end);
+    if (end == *p) return false;
+
+    bool isFloat = false;
+    for (const char* s = *p; s < end; s++) {
+        if (*s == '.' || *s == 'e' || *s == 'E') {
+            isFloat = true;
+            break;
+        }
+    }
+    if (isFloat) {
+        *out = FLOAT_VAL(asDouble);
+    } else {
+        long long asInt = strtoll(*p, NULL, 10);
+        *out = INT_VAL((int64_t)asInt);
+    }
+    *p = end;
+    return true;
+}
+
+static bool evaluateBreakpointClause(VM* vm, CallFrame* frame, int line,
+                                     DebugBreakpoint* bp, const char** p) {
+    (void)vm;
+    skipSpaces(p);
+
+    Value lhs;
+    bool hasLhs = true;
+    if (strncmp(*p, "hit", 3) == 0 && !isalnum((unsigned char)(*p)[3]) && (*p)[3] != '_') {
+        lhs = INT_VAL(bp->hitCount);
+        *p += 3;
+    } else if (strncmp(*p, "line", 4) == 0 && !isalnum((unsigned char)(*p)[4]) && (*p)[4] != '_') {
+        lhs = INT_VAL(line);
+        *p += 4;
+    } else if (strncmp(*p, "depth", 5) == 0 && !isalnum((unsigned char)(*p)[5]) && (*p)[5] != '_') {
+        lhs = INT_VAL(vm->frameCount);
+        *p += 5;
+    } else if (strncmp(*p, "local[", 6) == 0) {
+        *p += 6;
+        skipSpaces(p);
+        if (!isdigit((unsigned char)**p)) return true;
+        char* end = NULL;
+        long idx = strtol(*p, &end, 10);
+        *p = end;
+        skipSpaces(p);
+        if (**p != ']') return true;
+        (*p)++;
+        int localCount = (int)(vm->stackTop - frame->slots);
+        if (idx < 0 || idx >= localCount) return false;
+        lhs = frame->slots[idx];
+    } else {
+        hasLhs = false;
+    }
+
+    if (!hasLhs) return true;  // Keep backward-compatible permissive behavior.
+    skipSpaces(p);
+
+    BreakpointOp op;
+    if (!parseBreakpointOp(p, &op)) return true;
+
+    Value rhs;
+    if (!parseConditionRhsValue(p, &rhs)) return true;
+
+    return compareValues(lhs, op, rhs);
+}
+
+static bool evaluateBreakpointCondition(VM* vm, CallFrame* frame, int line,
+                                        DebugBreakpoint* bp) {
+    if (!bp->hasCondition) return true;
+    const char* p = bp->condition;
+
+    // Support conjunctions: "hit>=2 && local[0]==42".
+    while (true) {
+        if (!evaluateBreakpointClause(vm, frame, line, bp, &p)) {
+            return false;
+        }
+        skipSpaces(&p);
+        if (strncmp(p, "&&", 2) == 0) {
+            p += 2;
+            continue;
+        }
+        break;
+    }
     return true;
 }
 
@@ -183,12 +349,12 @@ static void printDebuggerLocals(VM* vm, CallFrame* frame) {
     }
 }
 
-static bool shouldPauseForBreakpoint(VM* vm, int line) {
+static bool shouldPauseForBreakpoint(VM* vm, CallFrame* frame, int line) {
     for (int i = 0; i < vm->breakpointCount; i++) {
         DebugBreakpoint* bp = &vm->breakpoints[i];
         if (bp->line != line) continue;
         bp->hitCount++;
-        if (evaluateBreakpointCondition(bp)) {
+        if (evaluateBreakpointCondition(vm, frame, line, bp)) {
             return true;
         }
     }
@@ -223,6 +389,11 @@ static void debuggerRepl(VM* vm, CallFrame* frame, int line) {
             vm->debuggerAutoContinue = true;
         } else if (strcmp(input, "n") == 0 || strcmp(input, "next") == 0) {
             vm->debuggerStepMode = DEBUG_STEP_NEXT;
+            vm->debuggerStepDepth = vm->frameCount;
+            vm->debuggerAutoContinue = true;
+        } else if (strcmp(input, "o") == 0 || strcmp(input, "out") == 0 ||
+                   strcmp(input, "stepout") == 0 || strcmp(input, "step-out") == 0) {
+            vm->debuggerStepMode = DEBUG_STEP_OUT;
             vm->debuggerStepDepth = vm->frameCount;
             vm->debuggerAutoContinue = true;
         } else if (strcmp(input, "bt") == 0) {
@@ -262,7 +433,8 @@ static void debuggerRepl(VM* vm, CallFrame* frame, int line) {
                 }
             }
         } else if (strcmp(input, "help") == 0 || strcmp(input, "h") == 0) {
-            printf("commands: break <line> [if hit>=N], delete <line>, breakpoints, step|s, next|n, continue|c, bt, locals, help\n");
+            printf("commands: break <line> [if cond], delete <line>, breakpoints, step|s, next|n, out|o, continue|c, bt, locals, help\n");
+            printf("  cond vars: hit, line, depth, local[N]  (ops: == != < <= > >=, join with &&)\n");
         } else {
             printf("unknown command. try: help\n");
         }
@@ -2445,12 +2617,15 @@ static InterpretResult executeWithFrames(VM* vm) {
             bool lineChanged = (line != vm->debuggerLastLine);
             bool pause = false;
 
-            if (lineChanged && shouldPauseForBreakpoint(vm, line)) {
+            if (lineChanged && shouldPauseForBreakpoint(vm, frame, line)) {
                 pause = true;
             } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_IN) {
                 pause = true;
             } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_NEXT &&
                        vm->frameCount <= vm->debuggerStepDepth) {
+                pause = true;
+            } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_OUT &&
+                       vm->frameCount < vm->debuggerStepDepth) {
                 pause = true;
             }
 

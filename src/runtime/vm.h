@@ -34,6 +34,7 @@ typedef enum {
     DEBUG_STEP_NONE,
     DEBUG_STEP_IN,
     DEBUG_STEP_NEXT,
+    DEBUG_STEP_OUT,
 } DebugStepMode;
 
 #define DEBUG_BREAKPOINTS_MAX 256
