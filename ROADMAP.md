@@ -247,6 +247,54 @@ let {x, y} = p  // ✅ Implemented
 
 ---
 
+## Production Readiness Priorities
+
+This section tracks the highest-impact work to move Blaze from experimental to production-ready.
+
+### Critical (Blockers)
+
+1. **Complete file I/O**
+   - `std/io.blaze` and `std/path.blaze` are currently stubs.
+   - Implement end-to-end file primitives (open/read/write/close, existence checks, and path helpers).
+2. **Graceful OOM handling**
+   - Replace hard process exits on allocation failure with runtime exceptions where feasible.
+   - Keep diagnostics actionable so user code can fail predictably.
+3. **Stack overflow protection**
+   - Ensure frame/value stack limits fail with catchable runtime errors (not crashes).
+   - Validate behavior around `FRAMES_MAX` and `STACK_MAX` boundaries.
+
+### Important (Production Quality)
+
+4. **Structured error types**
+   - Move beyond bare string exceptions to typed error objects/kinds.
+5. **Array and string bounds safety**
+   - Guarantee out-of-bounds indexing raises runtime exceptions instead of undefined behavior.
+6. **`super` type checking completion**
+   - Finish remaining `typechecker.c` TODO coverage for superclass typing.
+7. **Stdlib breadth**
+   - Prioritize practical modules: collections, JSON parsing, and network I/O.
+8. **Stress, fuzz, and benchmark coverage**
+   - Add targeted tests for memory pressure, deep recursion, large data, and baseline performance.
+
+### Nice-to-Have
+
+9. **Configurable resource limits** (`FRAMES_MAX`, `STACK_MAX`, etc.)
+10. **LSP/IDE integration**
+11. **FFI support**
+12. **Package manager**
+13. **Cross-platform CI/testing** (Linux, macOS, Windows)
+14. **Concurrency model** (threads and/or async)
+
+### Existing Strengths
+
+- Type system depth (generics, unions, inference, narrowing)
+- Broad regression coverage for core language behavior
+- Strong documentation quality (README, architecture, specification, changelog)
+- Implemented runtime/compiler foundations (GC, interning, TCO, constant folding)
+- Helpful diagnostics and parser/typechecker error recovery
+
+---
+
 ## Known Limitations
 
 These are current design choices or limitations:

@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### March 31, 2026 - Production readiness prioritization
+
+#### Changed
+- **ROADMAP**: added a dedicated "Production Readiness Priorities" section with ranked workstreams:
+  - Critical blockers: real file I/O, graceful OOM behavior, and stack overflow protection.
+  - Production-quality priorities: structured errors, bounds-safety guarantees, `super` type-check completeness, stdlib expansion, and stress/fuzz/perf testing.
+  - Nice-to-have items: configurable limits, LSP, FFI, package management, cross-platform validation, and concurrency.
+- **Roadmap framing**: captured current language/runtime strengths alongside remaining production gaps to guide milestone planning.
+
 ### March 31, 2026 - Roadmap alignment for bitwise operators
 
 #### Changed
