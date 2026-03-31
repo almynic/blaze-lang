@@ -802,8 +802,9 @@ static char* readFile(const char* path) {
 }
 
 /* Read path, interpret, free; exit 65/70 on compile/runtime failure. */
-static void runFile(const char* path, bool debugMode, const char* breakpointsPath,
-                    int* breakLines, int breakCount, const char** breakConds) {
+static void runFile(const char* path, bool debugMode, bool debugProtocolMode,
+                    const char* breakpointsPath, int* breakLines, int breakCount,
+                    const char** breakConds) {
     char* source = readFile(path);
     if (source == NULL) return;
 
@@ -811,13 +812,18 @@ static void runFile(const char* path, bool debugMode, const char* breakpointsPat
     initVM(&vm);
     if (debugMode) {
         setDebuggerEnabled(&vm, true);
+        setDebuggerProtocolMode(&vm, debugProtocolMode);
         setDebuggerBreakpointsPath(&vm, breakpointsPath);
         for (int i = 0; i < breakCount; i++) {
             debuggerAddBreakpoint(&vm, breakLines[i], breakConds[i]);
         }
         // Pause immediately at first executed source line.
         vm.debuggerStepMode = DEBUG_STEP_IN;
-        printf("[debug] enabled (bp file: %s)\n", breakpointsPath);
+        if (debugProtocolMode) {
+            printf("{\"event\":\"debuggerEnabled\",\"protocol\":\"jsonl\",\"bpFile\":\"%s\"}\n", breakpointsPath);
+        } else {
+            printf("[debug] enabled (bp file: %s)\n", breakpointsPath);
+        }
     }
 
     InterpretResult result = interpret(&vm, source);
@@ -1441,6 +1447,7 @@ int main(int argc, char* argv[]) {
         repl();
     } else {
         bool debugMode = false;
+        bool debugProtocolMode = false;
         const char* bpPath = ".blaze_breakpoints";
         int breakLines[64];
         const char* breakConds[64];
@@ -1463,6 +1470,9 @@ int main(int argc, char* argv[]) {
                 return 0;
             } else if (strcmp(argv[i], "--debug") == 0) {
                 debugMode = true;
+            } else if (strcmp(argv[i], "--debug-protocol") == 0) {
+                debugMode = true;
+                debugProtocolMode = true;
             } else if (strcmp(argv[i], "--bp-file") == 0) {
                 if (i + 1 >= argc) {
                     fprintf(stderr, "--bp-file requires a path\n");
@@ -1514,11 +1524,12 @@ int main(int argc, char* argv[]) {
         }
 
         if (scriptPath != NULL) {
-            runFile(scriptPath, debugMode, bpPath, breakLines, breakCount, breakConds);
+            runFile(scriptPath, debugMode, debugProtocolMode, bpPath, breakLines, breakCount, breakConds);
         } else {
             fprintf(stderr, "Usage: blaze [script.blaze]\n");
             fprintf(stderr, "       blaze --test    Run built-in tests\n");
             fprintf(stderr, "       blaze --debug [--break N] [--break-if N:hit>=K] [--bp-file path] script.blaze\n");
+            fprintf(stderr, "       blaze --debug-protocol [--break N] [--break-if N:hit>=K] [--bp-file path] script.blaze\n");
             fprintf(stderr, "       blaze           Start REPL\n");
             freeTypeSystem();
             return 64;

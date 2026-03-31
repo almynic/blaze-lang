@@ -92,6 +92,17 @@ static int currentFrameLine(const CallFrame* frame) {
     return function->chunk.lines[rawInstruction];
 }
 
+static int currentFrameOffset(const CallFrame* frame) {
+    ObjFunction* function = frame->closure->function;
+    ptrdiff_t rawInstruction = (frame->ip - function->chunk.code) - 1;
+    if (rawInstruction < 0) rawInstruction = 0;
+    if (function->chunk.count <= 0) return 0;
+    if (rawInstruction >= function->chunk.count) {
+        rawInstruction = function->chunk.count - 1;
+    }
+    return (int)rawInstruction;
+}
+
 typedef enum {
     BP_OP_EQ,
     BP_OP_NE,
@@ -349,6 +360,132 @@ static void printDebuggerLocals(VM* vm, CallFrame* frame) {
     }
 }
 
+static void printJsonEscaped(const char* s) {
+    if (s == NULL) return;
+    for (const char* p = s; *p != '\0'; p++) {
+        unsigned char c = (unsigned char)*p;
+        switch (c) {
+            case '\"': printf("\\\""); break;
+            case '\\': printf("\\\\"); break;
+            case '\n': printf("\\n"); break;
+            case '\r': printf("\\r"); break;
+            case '\t': printf("\\t"); break;
+            default:
+                if (c < 0x20) {
+                    printf("\\u%04x", (unsigned)c);
+                } else {
+                    putchar((char)c);
+                }
+                break;
+        }
+    }
+}
+
+static void emitProtocolStopped(VM* vm, CallFrame* frame, int line, const char* reason) {
+    const char* name = "script";
+    if (frame->closure->function->name != NULL) {
+        name = frame->closure->function->name->chars;
+    }
+    int offset = currentFrameOffset(frame);
+    printf("{\"event\":\"stopped\",\"reason\":\"");
+    printJsonEscaped(reason);
+    printf("\",\"line\":%d,\"offset\":%d,\"frameDepth\":%d,\"function\":\"", line, offset, vm->frameCount);
+    printJsonEscaped(name);
+    printf("\"}\n");
+    fflush(stdout);
+}
+
+static void emitProtocolContinued(void) {
+    printf("{\"event\":\"continued\"}\n");
+    fflush(stdout);
+}
+
+static void emitProtocolStack(VM* vm) {
+    printf("{\"event\":\"stack\",\"frames\":[");
+    for (int i = vm->frameCount - 1; i >= 0; i--) {
+        CallFrame* frame = &vm->frames[i];
+        ObjFunction* function = frame->closure->function;
+        const char* name = function->name == NULL ? "script" : function->name->chars;
+        int line = currentFrameLine(frame);
+        int offset = currentFrameOffset(frame);
+        if (i != vm->frameCount - 1) printf(",");
+        printf("{\"index\":%d,\"line\":%d,\"offset\":%d,\"function\":\"",
+               vm->frameCount - 1 - i, line, offset);
+        printJsonEscaped(name);
+        printf("\"}");
+    }
+    printf("]}\n");
+    fflush(stdout);
+}
+
+static void emitProtocolLocals(VM* vm, CallFrame* frame) {
+    int count = 0;
+    if (vm->stackTop > frame->slots) {
+        count = (int)(vm->stackTop - frame->slots);
+    }
+    printf("{\"event\":\"locals\",\"count\":%d,\"locals\":[", count);
+    for (int i = 0; i < count; i++) {
+        if (i > 0) printf(",");
+        printf("{\"index\":%d,\"value\":\"", i);
+        Value v = frame->slots[i];
+        if (IS_NIL(v)) {
+            printJsonEscaped("nil");
+        } else if (IS_BOOL(v)) {
+            printJsonEscaped(AS_BOOL(v) ? "true" : "false");
+        } else if (IS_INT(v)) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%lld", (long long)AS_INT(v));
+            printJsonEscaped(buf);
+        } else if (IS_FLOAT(v)) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%g", AS_FLOAT(v));
+            printJsonEscaped(buf);
+        } else if (IS_STRING(v)) {
+            printJsonEscaped(AS_CSTRING(v));
+        } else {
+            printJsonEscaped("<object>");
+        }
+        printf("\"}");
+    }
+    printf("]}\n");
+    fflush(stdout);
+}
+
+static bool extractJsonStringField(const char* input, const char* field, char* out, size_t outSize) {
+    char needle[32];
+    snprintf(needle, sizeof(needle), "\"%s\"", field);
+    const char* p = strstr(input, needle);
+    if (p == NULL) return false;
+    p = strchr(p, ':');
+    if (p == NULL) return false;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '\"') return false;
+    p++;
+    size_t n = 0;
+    while (*p != '\0' && *p != '\"') {
+        if (n + 1 < outSize) out[n++] = *p;
+        p++;
+    }
+    if (*p != '\"') return false;
+    out[n] = '\0';
+    return true;
+}
+
+static bool extractJsonIntField(const char* input, const char* field, int* out) {
+    char needle[32];
+    snprintf(needle, sizeof(needle), "\"%s\"", field);
+    const char* p = strstr(input, needle);
+    if (p == NULL) return false;
+    p = strchr(p, ':');
+    if (p == NULL) return false;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    if (!isdigit((unsigned char)*p) && *p != '-') return false;
+    *out = atoi(p);
+    return true;
+}
+
 static bool shouldPauseForBreakpoint(VM* vm, CallFrame* frame, int line) {
     for (int i = 0; i < vm->breakpointCount; i++) {
         DebugBreakpoint* bp = &vm->breakpoints[i];
@@ -363,16 +500,22 @@ static bool shouldPauseForBreakpoint(VM* vm, CallFrame* frame, int line) {
 
 static void debuggerRepl(VM* vm, CallFrame* frame, int line) {
     vm->debuggerPaused = true;
-    printf("\n[debug] paused at line %d", line);
-    if (frame->closure->function->name != NULL) {
-        printf(" in %s()", frame->closure->function->name->chars);
+    if (vm->debuggerProtocolMode) {
+        emitProtocolStopped(vm, frame, line, "pause");
+    } else {
+        printf("\n[debug] paused at line %d", line);
+        if (frame->closure->function->name != NULL) {
+            printf(" in %s()", frame->closure->function->name->chars);
+        }
+        printf("\n");
     }
-    printf("\n");
 
     char input[256];
     while (!vm->debuggerAutoContinue) {
-        printf("(blaze-debug) ");
-        fflush(stdout);
+        if (!vm->debuggerProtocolMode) {
+            printf("(blaze-debug) ");
+            fflush(stdout);
+        }
         if (fgets(input, sizeof(input), stdin) == NULL) {
             vm->debuggerAutoContinue = true;
             vm->debuggerStepMode = DEBUG_STEP_NONE;
@@ -380,6 +523,70 @@ static void debuggerRepl(VM* vm, CallFrame* frame, int line) {
         }
         char* nl = strchr(input, '\n');
         if (nl) *nl = '\0';
+
+        if (vm->debuggerProtocolMode) {
+            char cmd[64];
+            char cond[128];
+            int bpLine = 0;
+            bool haveCmd = extractJsonStringField(input, "command", cmd, sizeof(cmd)) ||
+                           extractJsonStringField(input, "cmd", cmd, sizeof(cmd));
+            if (!haveCmd) {
+                printf("{\"event\":\"error\",\"message\":\"missing command\"}\n");
+                fflush(stdout);
+                continue;
+            }
+
+            if (strcmp(cmd, "continue") == 0) {
+                vm->debuggerStepMode = DEBUG_STEP_NONE;
+                vm->debuggerAutoContinue = true;
+                emitProtocolContinued();
+            } else if (strcmp(cmd, "step") == 0) {
+                vm->debuggerStepMode = DEBUG_STEP_IN;
+                vm->debuggerAutoContinue = true;
+                emitProtocolContinued();
+            } else if (strcmp(cmd, "next") == 0) {
+                vm->debuggerStepMode = DEBUG_STEP_NEXT;
+                vm->debuggerStepDepth = vm->frameCount;
+                vm->debuggerAutoContinue = true;
+                emitProtocolContinued();
+            } else if (strcmp(cmd, "out") == 0) {
+                vm->debuggerStepMode = DEBUG_STEP_OUT;
+                vm->debuggerStepDepth = vm->frameCount;
+                vm->debuggerAutoContinue = true;
+                emitProtocolContinued();
+            } else if (strcmp(cmd, "stack") == 0 || strcmp(cmd, "bt") == 0) {
+                emitProtocolStack(vm);
+            } else if (strcmp(cmd, "locals") == 0) {
+                emitProtocolLocals(vm, frame);
+            } else if (strcmp(cmd, "setBreakpoint") == 0) {
+                if (!extractJsonIntField(input, "line", &bpLine)) {
+                    printf("{\"event\":\"error\",\"message\":\"setBreakpoint requires line\"}\n");
+                    fflush(stdout);
+                    continue;
+                }
+                bool hasCond = extractJsonStringField(input, "condition", cond, sizeof(cond));
+                bool ok = debuggerAddBreakpoint(vm, bpLine, hasCond ? cond : NULL);
+                if (ok) saveBreakpoints(vm);
+                printf("{\"event\":\"breakpoint\",\"action\":\"set\",\"ok\":%s,\"line\":%d}\n",
+                       ok ? "true" : "false", bpLine);
+                fflush(stdout);
+            } else if (strcmp(cmd, "removeBreakpoint") == 0) {
+                if (!extractJsonIntField(input, "line", &bpLine)) {
+                    printf("{\"event\":\"error\",\"message\":\"removeBreakpoint requires line\"}\n");
+                    fflush(stdout);
+                    continue;
+                }
+                bool ok = debuggerRemoveBreakpoint(vm, bpLine);
+                if (ok) saveBreakpoints(vm);
+                printf("{\"event\":\"breakpoint\",\"action\":\"remove\",\"ok\":%s,\"line\":%d}\n",
+                       ok ? "true" : "false", bpLine);
+                fflush(stdout);
+            } else {
+                printf("{\"event\":\"error\",\"message\":\"unknown command\"}\n");
+                fflush(stdout);
+            }
+            continue;
+        }
 
         if (strcmp(input, "c") == 0 || strcmp(input, "continue") == 0) {
             vm->debuggerStepMode = DEBUG_STEP_NONE;
@@ -1731,6 +1938,7 @@ void initVM(VM* vm) {
     vm->debuggerLastLine = -1;
     vm->debuggerLastFrameDepth = 0;
     vm->debuggerLastFunction = NULL;
+    vm->debuggerProtocolMode = false;
     vm->debuggerAutoContinue = false;
     vm->debuggerBreakpointsPath[0] = '\0';
     vm->breakpointCount = 0;
@@ -1864,6 +2072,10 @@ void setDebuggerEnabled(VM* vm, bool enabled) {
     vm->debuggerLastLine = -1;
     vm->debuggerLastFrameDepth = 0;
     vm->debuggerLastFunction = NULL;
+}
+
+void setDebuggerProtocolMode(VM* vm, bool enabled) {
+    vm->debuggerProtocolMode = enabled;
 }
 
 void setDebuggerBreakpointsPath(VM* vm, const char* path) {

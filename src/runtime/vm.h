@@ -74,6 +74,7 @@ typedef struct VM {
     int debuggerLastLine;
     int debuggerLastFrameDepth;
     ObjFunction* debuggerLastFunction;
+    bool debuggerProtocolMode;
     bool debuggerAutoContinue;
     char debuggerBreakpointsPath[512];
     DebugBreakpoint breakpoints[DEBUG_BREAKPOINTS_MAX];
@@ -102,6 +103,7 @@ Value peek(VM* vm, int distance);
 
 // Debugger controls
 void setDebuggerEnabled(VM* vm, bool enabled);
+void setDebuggerProtocolMode(VM* vm, bool enabled);
 void setDebuggerBreakpointsPath(VM* vm, const char* path);
 bool debuggerAddBreakpoint(VM* vm, int line, const char* condition);
 bool debuggerRemoveBreakpoint(VM* vm, int line);

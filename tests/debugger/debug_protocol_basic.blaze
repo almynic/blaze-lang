@@ -1,0 +1,6 @@
+fn add(a: int, b: int) -> int {
+    let c: int = a + b
+    return c
+}
+
+print(add(2, 3))

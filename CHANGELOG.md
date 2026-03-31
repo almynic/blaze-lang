@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### March 31, 2026 - Debugger protocol MVP (JSON lines)
+
+#### Added
+- **CLI mode**: `--debug-protocol` enables debugger IO over JSON lines for script execution.
+- **Protocol events** from VM debugger:
+  - `debuggerEnabled`
+  - `stopped` (line, offset, frameDepth, function, reason)
+  - `continued`
+  - `stack`
+  - `locals`
+- **Protocol commands** on stdin JSON lines (`command` or `cmd`):
+  - `continue`, `step`, `next`, `out`
+  - `stack`, `locals`
+  - `setBreakpoint` (`line`, optional `condition`)
+  - `removeBreakpoint` (`line`)
+- Debugger fixture for protocol smoke tests: `tests/debugger/debug_protocol_basic.blaze`.
+
 ### March 31, 2026 - Debugger stepping across frame transitions
 
 #### Fixed
