@@ -1,0 +1,13 @@
+fn f() -> int {
+    try {
+        print("in try")
+        return 10
+    } catch (e) {
+        print("in catch")
+        return 0
+    } finally {
+        print("in finally")
+    }
+}
+
+print(f())

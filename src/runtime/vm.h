@@ -30,6 +30,20 @@ typedef struct {
     Value* stackTop;        // Stack top when try was entered
 } ExceptionHandler;
 
+typedef enum {
+    DEBUG_STEP_NONE,
+    DEBUG_STEP_IN,
+    DEBUG_STEP_NEXT,
+} DebugStepMode;
+
+#define DEBUG_BREAKPOINTS_MAX 256
+typedef struct {
+    int line;
+    int hitCount;
+    bool hasCondition;
+    char condition[128];
+} DebugBreakpoint;
+
 typedef struct VM {
     CallFrame frames[FRAMES_MAX];
     int frameCount;
@@ -49,6 +63,18 @@ typedef struct VM {
     // Legacy fields for simple execution (will be removed)
     Chunk* chunk;
     uint8_t* ip;
+
+    // Debugger state
+    bool debuggerEnabled;
+    bool debuggerPaused;
+    bool debuggerStepping;
+    DebugStepMode debuggerStepMode;
+    int debuggerStepDepth;
+    int debuggerLastLine;
+    bool debuggerAutoContinue;
+    char debuggerBreakpointsPath[512];
+    DebugBreakpoint breakpoints[DEBUG_BREAKPOINTS_MAX];
+    int breakpointCount;
 } VM;
 
 // Initialize the VM
@@ -70,5 +96,12 @@ InterpretResult interpretRepl(VM* vm, const char* source);
 void push(VM* vm, Value value);
 Value pop(VM* vm);
 Value peek(VM* vm, int distance);
+
+// Debugger controls
+void setDebuggerEnabled(VM* vm, bool enabled);
+void setDebuggerBreakpointsPath(VM* vm, const char* path);
+bool debuggerAddBreakpoint(VM* vm, int line, const char* condition);
+bool debuggerRemoveBreakpoint(VM* vm, int line);
+void debuggerClearBreakpoints(VM* vm);
 
 #endif

@@ -42,6 +42,12 @@ cmake --build build
 
 # Execute a file
 ./build/blaze your_file.blaze
+
+# Debug a file (interactive debugger)
+./build/blaze --debug your_file.blaze
+
+# Debug with startup breakpoints
+./build/blaze --debug --break 12 --break-if 24:hit>=3 your_file.blaze
 ```
 
 ### Hello World

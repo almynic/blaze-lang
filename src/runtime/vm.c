@@ -16,6 +16,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <ctype.h>
 
 // Global module system
 static ModuleSystem moduleSystem;
@@ -58,12 +59,18 @@ static void runtimeError(VM* vm, const char* format, ...) {
     va_end(args);
     fputs("\n", stderr);
 
-    // Print stack trace
+    // Print stack trace with line/offset details.
     for (int i = vm->frameCount - 1; i >= 0; i--) {
         CallFrame* frame = &vm->frames[i];
         ObjFunction* function = frame->closure->function;
-        size_t instruction = frame->ip - function->chunk.code - 1;
-        fprintf(stderr, "[line %d] in ", function->chunk.lines[instruction]);
+        ptrdiff_t rawInstruction = (frame->ip - function->chunk.code) - 1;
+        if (rawInstruction < 0) rawInstruction = 0;
+        size_t instruction = (size_t)rawInstruction;
+        int line = 0;
+        if (function->chunk.count > 0 && instruction < (size_t)function->chunk.count) {
+            line = function->chunk.lines[instruction];
+        }
+        fprintf(stderr, "[line %d, offset %zu] in ", line, instruction);
         if (function->name == NULL) {
             fprintf(stderr, "script\n");
         } else {
@@ -72,6 +79,196 @@ static void runtimeError(VM* vm, const char* format, ...) {
     }
 
     resetStack(vm);
+}
+
+static int currentFrameLine(const CallFrame* frame) {
+    ObjFunction* function = frame->closure->function;
+    ptrdiff_t rawInstruction = (frame->ip - function->chunk.code) - 1;
+    if (rawInstruction < 0) rawInstruction = 0;
+    if (function->chunk.count <= 0) return 0;
+    if (rawInstruction >= function->chunk.count) {
+        rawInstruction = function->chunk.count - 1;
+    }
+    return function->chunk.lines[rawInstruction];
+}
+
+static bool evaluateBreakpointCondition(DebugBreakpoint* bp) {
+    // Minimal condition syntax: "hit==N", "hit>=N", "hit<=N", "hit>N", "hit<N".
+    if (!bp->hasCondition) return true;
+    const char* c = bp->condition;
+    while (*c == ' ') c++;
+    if (strncmp(c, "hit", 3) != 0) return true;
+    c += 3;
+    while (*c == ' ') c++;
+
+    char op1 = *c++;
+    char op2 = '\0';
+    if (*c == '=') {
+        op2 = '=';
+        c++;
+    }
+    while (*c == ' ') c++;
+    if (!isdigit((unsigned char)*c)) return true;
+    long rhs = strtol(c, NULL, 10);
+
+    if (op1 == '=' && op2 == '=') return bp->hitCount == rhs;
+    if (op1 == '>' && op2 == '=') return bp->hitCount >= rhs;
+    if (op1 == '<' && op2 == '=') return bp->hitCount <= rhs;
+    if (op1 == '>') return bp->hitCount > rhs;
+    if (op1 == '<') return bp->hitCount < rhs;
+    return true;
+}
+
+static void saveBreakpoints(const VM* vm) {
+    if (vm->debuggerBreakpointsPath[0] == '\0') return;
+    FILE* f = fopen(vm->debuggerBreakpointsPath, "w");
+    if (f == NULL) return;
+    for (int i = 0; i < vm->breakpointCount; i++) {
+        const DebugBreakpoint* bp = &vm->breakpoints[i];
+        if (bp->hasCondition) {
+            fprintf(f, "%d|%s\n", bp->line, bp->condition);
+        } else {
+            fprintf(f, "%d\n", bp->line);
+        }
+    }
+    fclose(f);
+}
+
+static void loadBreakpoints(VM* vm) {
+    if (vm->debuggerBreakpointsPath[0] == '\0') return;
+    FILE* f = fopen(vm->debuggerBreakpointsPath, "r");
+    if (f == NULL) return;
+    debuggerClearBreakpoints(vm);
+
+    char line[256];
+    while (fgets(line, sizeof(line), f) != NULL) {
+        char* newline = strchr(line, '\n');
+        if (newline) *newline = '\0';
+        if (line[0] == '\0') continue;
+
+        char* sep = strchr(line, '|');
+        if (sep != NULL) {
+            *sep = '\0';
+            int lineNo = atoi(line);
+            debuggerAddBreakpoint(vm, lineNo, sep + 1);
+        } else {
+            int lineNo = atoi(line);
+            debuggerAddBreakpoint(vm, lineNo, NULL);
+        }
+    }
+    fclose(f);
+}
+
+static void printDebuggerStackTrace(VM* vm) {
+    for (int i = vm->frameCount - 1; i >= 0; i--) {
+        CallFrame* frame = &vm->frames[i];
+        ObjFunction* function = frame->closure->function;
+        int line = currentFrameLine(frame);
+        const char* name = function->name == NULL ? "script" : function->name->chars;
+        printf("#%d line %d in %s\n", vm->frameCount - 1 - i, line, name);
+    }
+}
+
+static void printDebuggerLocals(VM* vm, CallFrame* frame) {
+    printf("locals:\n");
+    if (vm->stackTop <= frame->slots) {
+        printf("  (none)\n");
+        return;
+    }
+    int count = (int)(vm->stackTop - frame->slots);
+    for (int i = 0; i < count; i++) {
+        printf("  [%d] = ", i);
+        printValue(frame->slots[i]);
+        printf("\n");
+    }
+}
+
+static bool shouldPauseForBreakpoint(VM* vm, int line) {
+    for (int i = 0; i < vm->breakpointCount; i++) {
+        DebugBreakpoint* bp = &vm->breakpoints[i];
+        if (bp->line != line) continue;
+        bp->hitCount++;
+        if (evaluateBreakpointCondition(bp)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void debuggerRepl(VM* vm, CallFrame* frame, int line) {
+    vm->debuggerPaused = true;
+    printf("\n[debug] paused at line %d", line);
+    if (frame->closure->function->name != NULL) {
+        printf(" in %s()", frame->closure->function->name->chars);
+    }
+    printf("\n");
+
+    char input[256];
+    while (!vm->debuggerAutoContinue) {
+        printf("(blaze-debug) ");
+        fflush(stdout);
+        if (fgets(input, sizeof(input), stdin) == NULL) {
+            vm->debuggerAutoContinue = true;
+            vm->debuggerStepMode = DEBUG_STEP_NONE;
+            break;
+        }
+        char* nl = strchr(input, '\n');
+        if (nl) *nl = '\0';
+
+        if (strcmp(input, "c") == 0 || strcmp(input, "continue") == 0) {
+            vm->debuggerStepMode = DEBUG_STEP_NONE;
+            vm->debuggerAutoContinue = true;
+        } else if (strcmp(input, "s") == 0 || strcmp(input, "step") == 0) {
+            vm->debuggerStepMode = DEBUG_STEP_IN;
+            vm->debuggerAutoContinue = true;
+        } else if (strcmp(input, "n") == 0 || strcmp(input, "next") == 0) {
+            vm->debuggerStepMode = DEBUG_STEP_NEXT;
+            vm->debuggerStepDepth = vm->frameCount;
+            vm->debuggerAutoContinue = true;
+        } else if (strcmp(input, "bt") == 0) {
+            printDebuggerStackTrace(vm);
+        } else if (strcmp(input, "locals") == 0) {
+            printDebuggerLocals(vm, frame);
+        } else if (strncmp(input, "break ", 6) == 0) {
+            char* arg = input + 6;
+            while (*arg == ' ') arg++;
+            char* condSep = strstr(arg, " if ");
+            bool ok;
+            if (condSep != NULL) {
+                *condSep = '\0';
+                int bpLine = atoi(arg);
+                ok = debuggerAddBreakpoint(vm, bpLine, condSep + 4);
+            } else {
+                int bpLine = atoi(arg);
+                ok = debuggerAddBreakpoint(vm, bpLine, NULL);
+            }
+            printf(ok ? "added breakpoint\n" : "failed to add breakpoint\n");
+            saveBreakpoints(vm);
+        } else if (strncmp(input, "delete ", 7) == 0) {
+            int bpLine = atoi(input + 7);
+            bool ok = debuggerRemoveBreakpoint(vm, bpLine);
+            printf(ok ? "deleted breakpoint\n" : "breakpoint not found\n");
+            saveBreakpoints(vm);
+        } else if (strcmp(input, "breakpoints") == 0) {
+            if (vm->breakpointCount == 0) {
+                printf("(no breakpoints)\n");
+            }
+            for (int i = 0; i < vm->breakpointCount; i++) {
+                DebugBreakpoint* bp = &vm->breakpoints[i];
+                if (bp->hasCondition) {
+                    printf("%d if %s (hits=%d)\n", bp->line, bp->condition, bp->hitCount);
+                } else {
+                    printf("%d (hits=%d)\n", bp->line, bp->hitCount);
+                }
+            }
+        } else if (strcmp(input, "help") == 0 || strcmp(input, "h") == 0) {
+            printf("commands: break <line> [if hit>=N], delete <line>, breakpoints, step|s, next|n, continue|c, bt, locals, help\n");
+        } else {
+            printf("unknown command. try: help\n");
+        }
+    }
+    vm->debuggerAutoContinue = false;
+    vm->debuggerPaused = false;
 }
 
 // ============================================================================
@@ -1354,6 +1551,15 @@ void initVM(VM* vm) {
     resetStack(vm);
     vm->chunk = NULL;
     vm->ip = NULL;
+    vm->debuggerEnabled = false;
+    vm->debuggerPaused = false;
+    vm->debuggerStepping = false;
+    vm->debuggerStepMode = DEBUG_STEP_NONE;
+    vm->debuggerStepDepth = 0;
+    vm->debuggerLastLine = -1;
+    vm->debuggerAutoContinue = false;
+    vm->debuggerBreakpointsPath[0] = '\0';
+    vm->breakpointCount = 0;
     initTable(&vm->globals);
     initTable(&vm->strings);
 
@@ -1473,6 +1679,63 @@ void freeVM(VM* vm) {
 
     // Reset prelude flag so it's reloaded on next VM init
     preludeLoaded = false;
+}
+
+void setDebuggerEnabled(VM* vm, bool enabled) {
+    vm->debuggerEnabled = enabled;
+}
+
+void setDebuggerBreakpointsPath(VM* vm, const char* path) {
+    if (path == NULL) {
+        vm->debuggerBreakpointsPath[0] = '\0';
+        return;
+    }
+    snprintf(vm->debuggerBreakpointsPath, sizeof(vm->debuggerBreakpointsPath), "%s", path);
+    loadBreakpoints(vm);
+}
+
+bool debuggerAddBreakpoint(VM* vm, int line, const char* condition) {
+    if (line <= 0) return false;
+    for (int i = 0; i < vm->breakpointCount; i++) {
+        if (vm->breakpoints[i].line == line) {
+            vm->breakpoints[i].hasCondition = (condition != NULL && condition[0] != '\0');
+            vm->breakpoints[i].hitCount = 0;
+            if (vm->breakpoints[i].hasCondition) {
+                snprintf(vm->breakpoints[i].condition, sizeof(vm->breakpoints[i].condition), "%s", condition);
+            } else {
+                vm->breakpoints[i].condition[0] = '\0';
+            }
+            return true;
+        }
+    }
+    if (vm->breakpointCount >= DEBUG_BREAKPOINTS_MAX) return false;
+    DebugBreakpoint* bp = &vm->breakpoints[vm->breakpointCount++];
+    bp->line = line;
+    bp->hitCount = 0;
+    bp->hasCondition = (condition != NULL && condition[0] != '\0');
+    if (bp->hasCondition) {
+        snprintf(bp->condition, sizeof(bp->condition), "%s", condition);
+    } else {
+        bp->condition[0] = '\0';
+    }
+    return true;
+}
+
+bool debuggerRemoveBreakpoint(VM* vm, int line) {
+    for (int i = 0; i < vm->breakpointCount; i++) {
+        if (vm->breakpoints[i].line == line) {
+            for (int j = i; j < vm->breakpointCount - 1; j++) {
+                vm->breakpoints[j] = vm->breakpoints[j + 1];
+            }
+            vm->breakpointCount--;
+            return true;
+        }
+    }
+    return false;
+}
+
+void debuggerClearBreakpoints(VM* vm) {
+    vm->breakpointCount = 0;
 }
 
 // ============================================================================
@@ -2176,6 +2439,28 @@ static InterpretResult executeWithFrames(VM* vm) {
         disassembleInstruction(&frame->closure->function->chunk,
                               (int)(frame->ip - frame->closure->function->chunk.code));
 #endif
+
+        if (vm->debuggerEnabled && vm->frameCount > 0) {
+            int line = currentFrameLine(frame);
+            bool lineChanged = (line != vm->debuggerLastLine);
+            bool pause = false;
+
+            if (lineChanged && shouldPauseForBreakpoint(vm, line)) {
+                pause = true;
+            } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_IN) {
+                pause = true;
+            } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_NEXT &&
+                       vm->frameCount <= vm->debuggerStepDepth) {
+                pause = true;
+            }
+
+            if (pause) {
+                vm->debuggerLastLine = line;
+                debuggerRepl(vm, frame, line);
+            } else if (lineChanged) {
+                vm->debuggerLastLine = line;
+            }
+        }
 
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
@@ -3163,8 +3448,12 @@ static bool processImports(VM* vm, Stmt** statements, int count) {
 }
 
 static InterpretResult interpretInternal(VM* vm, const char* source, bool replMode) {
+    bool debuggerWasEnabled = vm->debuggerEnabled;
+
     // Load the prelude on first execution (adds common functions to globals)
+    vm->debuggerEnabled = false;
     if (!loadPrelude(vm)) {
+        vm->debuggerEnabled = debuggerWasEnabled;
         return INTERPRET_COMPILE_ERROR;
     }
 
@@ -3176,6 +3465,7 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
     Stmt** statements = parse(&parser, &stmtCount);
 
     if (statements == NULL) {
+        vm->debuggerEnabled = debuggerWasEnabled;
         return INTERPRET_COMPILE_ERROR;
     }
 
@@ -3183,6 +3473,7 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
     // This adds imported functions to the VM's globals
     if (!processImports(vm, statements, stmtCount)) {
         freeStatements(statements, stmtCount);
+        vm->debuggerEnabled = debuggerWasEnabled;
         return INTERPRET_COMPILE_ERROR;
     }
 
@@ -3236,6 +3527,7 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
     if (!lowerGenericClasses(&checker, &lowered, &loweredCount)) {
         freeTypeChecker(&checker);
         freeStatements(statements, stmtCount);
+        vm->debuggerEnabled = debuggerWasEnabled;
         return INTERPRET_COMPILE_ERROR;
     }
     freeTypeChecker(&checker);
@@ -3248,6 +3540,7 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
             FREE_ARRAY(Stmt*, lowered, loweredCount);
         }
         freeStatements(statements, stmtCount);
+        vm->debuggerEnabled = debuggerWasEnabled;
         return INTERPRET_COMPILE_ERROR;
     }
 
@@ -3264,6 +3557,7 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
             FREE_ARRAY(Stmt*, lowered, loweredCount);
         }
         freeStatements(statements, stmtCount);
+        vm->debuggerEnabled = debuggerWasEnabled;
         return INTERPRET_COMPILE_ERROR;
     }
 
@@ -3293,6 +3587,7 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
     pop(vm);
     push(vm, OBJ_VAL(closure));
     call(vm, closure, 0);
+    vm->debuggerEnabled = debuggerWasEnabled;
 
     return executeWithFrames(vm);
 }

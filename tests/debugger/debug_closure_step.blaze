@@ -1,0 +1,12 @@
+fn makeCounter() -> fn() -> int {
+    let n: int = 0
+    fn next() -> int {
+        n = n + 1
+        return n
+    }
+    return next
+}
+
+let c = makeCounter()
+print(c())
+print(c())

@@ -103,14 +103,16 @@ The core compiler is complete and has excellent developer experience. These are 
 
 ---
 
-### Phase 8: Debug Mode (Not Started)
+### Phase 8: Debug Mode (In Progress)
 **Priority**: Medium | **Complexity**: Medium
 
 #### Step-Through Execution
-- Add breakpoint support in VM
-- Step-through execution (step in/over/out)
-- Variable inspection at breakpoints
-- Call stack visualization
+- ✅ Breakpoint support in VM (`break`, `delete`, persistence file)
+- ✅ Step-through execution (`step`, `next`, `continue`)
+- ✅ Variable inspection at breakpoints (`locals` frame slots)
+- ✅ Call stack visualization (`bt`)
+- ⏳ Step out
+- ⏳ Rich expression-based conditional breakpoints
 
 #### Implementation Ideas
 - Add debug info to bytecode (line mappings)
@@ -123,7 +125,7 @@ The core compiler is complete and has excellent developer experience. These are 
 - Easier development and troubleshooting
 - IDE integration potential
 
-**Estimated Effort**: 3-4 weeks
+**Estimated Effort**: 1-2 additional weeks for step-out + richer conditions + IDE protocol polish
 
 ---
 

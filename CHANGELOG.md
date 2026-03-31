@@ -8,6 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### March 31, 2026 - Debugger foundations (Phase 8 start)
+
+#### Added
+- **Interactive debugger loop** in VM execution with commands:
+  - `break <line>` and `break <line> if hit>=N` (conditional by hit count)
+  - `delete <line>`, `breakpoints`
+  - `step` / `next` / `continue`
+  - `bt` (stack trace) and `locals` (frame slots)
+- **CLI debug mode** in `main.c`:
+  - `--debug` to enable debugger for script execution
+  - `--break <line>` for startup breakpoints
+  - `--break-if <line>:hit>=N` for startup conditional breakpoints
+  - `--bp-file <path>` to persist and reload breakpoints (default `.blaze_breakpoints`)
+- **Debugger regression programs**:
+  - `tests/debugger/debug_try_finally_step.blaze`
+  - `tests/debugger/debug_closure_step.blaze`
+  - `tests/debugger/debug_generic_inst_step.blaze`
+
+#### Changed
+- **Runtime stack traces** now include bytecode offset in addition to source line (`[line X, offset Y]`) for better diagnostics.
+- Prelude/module import execution runs with debugger temporarily disabled so `--debug` pauses in user script code instead of prelude internals.
+
 ### March 31, 2026 - Try/finally: execute finally on return
 
 #### Fixed

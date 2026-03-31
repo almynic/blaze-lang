@@ -1,0 +1,8 @@
+class Box<T> {
+    fn hello() {
+        print(1)
+    }
+}
+
+let b: Box<int> = Box<int>()
+b.hello()

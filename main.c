@@ -802,12 +802,23 @@ static char* readFile(const char* path) {
 }
 
 /* Read path, interpret, free; exit 65/70 on compile/runtime failure. */
-static void runFile(const char* path) {
+static void runFile(const char* path, bool debugMode, const char* breakpointsPath,
+                    int* breakLines, int breakCount, const char** breakConds) {
     char* source = readFile(path);
     if (source == NULL) return;
 
     VM vm;
     initVM(&vm);
+    if (debugMode) {
+        setDebuggerEnabled(&vm, true);
+        setDebuggerBreakpointsPath(&vm, breakpointsPath);
+        for (int i = 0; i < breakCount; i++) {
+            debuggerAddBreakpoint(&vm, breakLines[i], breakConds[i]);
+        }
+        // Pause immediately at first executed source line.
+        vm.debuggerStepMode = DEBUG_STEP_IN;
+        printf("[debug] enabled (bp file: %s)\n", breakpointsPath);
+    }
 
     InterpretResult result = interpret(&vm, source);
 
@@ -1428,23 +1439,90 @@ int main(int argc, char* argv[]) {
     if (argc == 1) {
         // No arguments - run REPL
         repl();
-    } else if (argc == 2) {
-        if (strcmp(argv[1], "--test") == 0 || strcmp(argv[1], "-t") == 0) {
-            // Run tests
-            printf("Blaze Language v0.1.0\n");
-            printf("=====================\n\n");
-            runTests();
-            printf("\nAll tests complete!\n");
-        } else {
-            // Run a specific file
-            runFile(argv[1]);
-        }
     } else {
-        fprintf(stderr, "Usage: blaze [script.blaze]\n");
-        fprintf(stderr, "       blaze --test    Run built-in tests\n");
-        fprintf(stderr, "       blaze           Start REPL\n");
-        freeTypeSystem();
-        return 64;
+        bool debugMode = false;
+        const char* bpPath = ".blaze_breakpoints";
+        int breakLines[64];
+        const char* breakConds[64];
+        int breakCount = 0;
+        const char* scriptPath = NULL;
+
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--test") == 0 || strcmp(argv[i], "-t") == 0) {
+                if (argc != 2) {
+                    fprintf(stderr, "Usage: blaze --test\n");
+                    freeTypeSystem();
+                    return 64;
+                }
+                // Run tests
+                printf("Blaze Language v0.1.0\n");
+                printf("=====================\n\n");
+                runTests();
+                printf("\nAll tests complete!\n");
+                freeTypeSystem();
+                return 0;
+            } else if (strcmp(argv[i], "--debug") == 0) {
+                debugMode = true;
+            } else if (strcmp(argv[i], "--bp-file") == 0) {
+                if (i + 1 >= argc) {
+                    fprintf(stderr, "--bp-file requires a path\n");
+                    freeTypeSystem();
+                    return 64;
+                }
+                bpPath = argv[++i];
+            } else if (strcmp(argv[i], "--break") == 0) {
+                if (i + 1 >= argc || breakCount >= 64) {
+                    fprintf(stderr, "--break requires a line number\n");
+                    freeTypeSystem();
+                    return 64;
+                }
+                breakLines[breakCount] = atoi(argv[++i]);
+                breakConds[breakCount] = NULL;
+                breakCount++;
+            } else if (strcmp(argv[i], "--break-if") == 0) {
+                if (i + 1 >= argc || breakCount >= 64) {
+                    fprintf(stderr, "--break-if requires LINE:COND\n");
+                    freeTypeSystem();
+                    return 64;
+                }
+                const char* spec = argv[++i];
+                const char* colon = strchr(spec, ':');
+                if (colon == NULL) {
+                    fprintf(stderr, "--break-if format is LINE:COND\n");
+                    freeTypeSystem();
+                    return 64;
+                }
+                char lineBuf[32];
+                int n = (int)(colon - spec);
+                if (n <= 0 || n >= (int)sizeof(lineBuf)) {
+                    fprintf(stderr, "invalid line in --break-if\n");
+                    freeTypeSystem();
+                    return 64;
+                }
+                memcpy(lineBuf, spec, (size_t)n);
+                lineBuf[n] = '\0';
+                breakLines[breakCount] = atoi(lineBuf);
+                breakConds[breakCount] = colon + 1;
+                breakCount++;
+            } else if (argv[i][0] == '-') {
+                fprintf(stderr, "Unknown option: %s\n", argv[i]);
+                freeTypeSystem();
+                return 64;
+            } else {
+                scriptPath = argv[i];
+            }
+        }
+
+        if (scriptPath != NULL) {
+            runFile(scriptPath, debugMode, bpPath, breakLines, breakCount, breakConds);
+        } else {
+            fprintf(stderr, "Usage: blaze [script.blaze]\n");
+            fprintf(stderr, "       blaze --test    Run built-in tests\n");
+            fprintf(stderr, "       blaze --debug [--break N] [--break-if N:hit>=K] [--bp-file path] script.blaze\n");
+            fprintf(stderr, "       blaze           Start REPL\n");
+            freeTypeSystem();
+            return 64;
+        }
     }
 
     // Cleanup
