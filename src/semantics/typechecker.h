@@ -35,10 +35,15 @@ typedef struct {
     SymbolTable symbols;
     Type* currentFunctionReturn;    // Expected return type of current function
     Type* currentClass;             // Current class being checked (for 'this')
+    Stmt* currentClassStmt;         // Current class declaration being checked
     bool hadError;
     GenericInstToCheck* genericInsts;
     int genericInstCount;
     int genericInstCapacity;
+    Type** classDeclTypes;          // TYPE_CLASS entries for declared classes
+    Stmt** classDeclStmts;          // Parallel array of class declaration statements
+    int classDeclCount;
+    int classDeclCapacity;
 } TypeChecker;
 
 // Initialize the type checker

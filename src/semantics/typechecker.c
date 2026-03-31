@@ -2,6 +2,7 @@
  * inheritance, generic bounds, and records instantiations for monomorph. */
 
 #include "typechecker.h"
+#include "generic.h"
 #include "memory.h"
 #include "colors.h"
 #include <stdarg.h>
@@ -142,12 +143,67 @@ static TypeGuard noTypeGuard() {
 static Type* checkExpr(TypeChecker* checker, Expr* expr);
 static void checkStmt(TypeChecker* checker, Stmt* stmt);
 
+/* Monomorph lowering only applies to fully concrete instantiations. Template-only
+ * uses (e.g. Base<T> with T still a type parameter) must not be queued — they
+ * would mangle to names like Base__unknown and emit useless prepended classes. */
+static bool genericInstHasConcreteTypeArgs(Type* t) {
+    if (t == NULL || t->kind != TYPE_GENERIC_INST) {
+        return false;
+    }
+    GenericInst* gi = &t->as.genericInst;
+    for (int i = 0; i < gi->typeArgCount; i++) {
+        Type* a = gi->typeArgs[i];
+        if (a == NULL) {
+            return false;
+        }
+        switch (a->kind) {
+            case TYPE_TYPE_PARAM:
+            case TYPE_UNKNOWN:
+            case TYPE_ERROR:
+                return false;
+            case TYPE_GENERIC_INST:
+                if (!genericInstHasConcreteTypeArgs(a)) {
+                    return false;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    return true;
+}
+
 static void pushGenericInst(TypeChecker* checker, Type* instType, Stmt* templateStmt) {
     for (int i = 0; i < checker->genericInstCount; i++) {
         if (typesEqual(checker->genericInsts[i].instType, instType)) {
             return;
         }
     }
+
+    if (instType->kind == TYPE_GENERIC_INST && !genericInstHasConcreteTypeArgs(instType)) {
+        return;
+    }
+
+    /* Superclass monomorphs must be emitted first (prepend order). */
+    if (templateStmt->kind == STMT_CLASS && instType->kind == TYPE_GENERIC_INST) {
+        ClassStmt* cs = &templateStmt->as.class_;
+        if (cs->superclassType != NULL) {
+            Type** repl = instType->as.genericInst.typeArgs;
+            TypeNode* subSuper = substituteTypeNodeForClass(cs->superclassType, cs, repl, templateStmt->line);
+            if (subSuper != NULL) {
+                Type* superT = resolveTypeNode(checker, subSuper);
+                freeTypeNode(subSuper);
+                if (superT != NULL && superT->kind == TYPE_GENERIC_INST) {
+                    Type* tpl = superT->as.genericInst.genericType;
+                    if (tpl != NULL && tpl->kind == TYPE_GENERIC_CLASS_TEMPLATE) {
+                        Stmt* superStmt = tpl->as.genericClassTemplate->classStmt;
+                        pushGenericInst(checker, superT, superStmt);
+                    }
+                }
+            }
+        }
+    }
+
     if (checker->genericInstCount >= checker->genericInstCapacity) {
         int old = checker->genericInstCapacity;
         checker->genericInstCapacity = GROW_CAPACITY(old);
@@ -157,6 +213,32 @@ static void pushGenericInst(TypeChecker* checker, Type* instType, Stmt* template
     checker->genericInsts[checker->genericInstCount].instType = instType;
     checker->genericInsts[checker->genericInstCount].templateStmt = templateStmt;
     checker->genericInstCount++;
+}
+
+static void registerClassDecl(TypeChecker* checker, Type* classType, Stmt* classStmt) {
+    if (classType == NULL || classType->kind != TYPE_CLASS || classStmt == NULL) return;
+    for (int i = 0; i < checker->classDeclCount; i++) {
+        if (checker->classDeclTypes[i] == classType) return;
+    }
+    if (checker->classDeclCount >= checker->classDeclCapacity) {
+        int old = checker->classDeclCapacity;
+        checker->classDeclCapacity = GROW_CAPACITY(old);
+        checker->classDeclTypes = GROW_ARRAY(Type*, checker->classDeclTypes, old, checker->classDeclCapacity);
+        checker->classDeclStmts = GROW_ARRAY(Stmt*, checker->classDeclStmts, old, checker->classDeclCapacity);
+    }
+    checker->classDeclTypes[checker->classDeclCount] = classType;
+    checker->classDeclStmts[checker->classDeclCount] = classStmt;
+    checker->classDeclCount++;
+}
+
+static Stmt* findClassDecl(TypeChecker* checker, Type* classType) {
+    if (classType == NULL) return NULL;
+    for (int i = 0; i < checker->classDeclCount; i++) {
+        if (checker->classDeclTypes[i] == classType) {
+            return checker->classDeclStmts[i];
+        }
+    }
+    return NULL;
 }
 
 // Detect type guards of the form: type(x) == "int" or x == nil
@@ -973,6 +1055,95 @@ static Type* checkThis(TypeChecker* checker, Expr* expr) {
     return checker->currentClass;
 }
 
+static Stmt* classStmtFromType(TypeChecker* checker, Type* type) {
+    if (type == NULL) return NULL;
+    if (type->kind == TYPE_CLASS) {
+        return findClassDecl(checker, type);
+    }
+    if (type->kind == TYPE_GENERIC_INST) {
+        Type* genericType = type->as.genericInst.genericType;
+        if (genericType != NULL && genericType->kind == TYPE_GENERIC_CLASS_TEMPLATE) {
+            return (Stmt*)genericType->as.genericClassTemplate->classStmt;
+        }
+    }
+    return NULL;
+}
+
+static Type* checkSuper(TypeChecker* checker, Expr* expr) {
+    if (checker->currentClass == NULL || checker->currentClassStmt == NULL) {
+        typeError(checker, expr->line, "'super' can only be used inside a class method.");
+        return createErrorType();
+    }
+
+    ClassStmt* currentClassStmt = &checker->currentClassStmt->as.class_;
+    Type* superType = currentClassStmt->superclassResolved;
+    if (superType == NULL) {
+        typeError(checker, expr->line, "Cannot use 'super' in a class with no superclass.");
+        return createErrorType();
+    }
+    if (superType->kind != TYPE_CLASS && superType->kind != TYPE_GENERIC_INST) {
+        typeError(checker, expr->line, "Superclass type is invalid for 'super' access.");
+        return createErrorType();
+    }
+
+    Stmt* superStmtRaw = classStmtFromType(checker, superType);
+    if (superStmtRaw == NULL || superStmtRaw->kind != STMT_CLASS) {
+        typeError(checker, expr->line, "Could not resolve superclass declaration for 'super'.");
+        return createErrorType();
+    }
+
+    ClassStmt* superClassStmt = &superStmtRaw->as.class_;
+    SuperExpr* superExpr = &expr->as.super_;
+    if (superType->kind == TYPE_GENERIC_INST && superClassStmt->typeParamCount > 0) {
+        GenericInst* sgi = &superType->as.genericInst;
+        if (sgi->typeArgCount != superClassStmt->typeParamCount) {
+            typeError(checker, expr->line,
+                      "Superclass type argument count does not match its declaration for 'super'.");
+            return createErrorType();
+        }
+    }
+
+    for (int i = 0; i < superClassStmt->methodCount; i++) {
+        FunctionStmt* method = &superClassStmt->methods[i];
+        if (method->name.length == superExpr->method.length &&
+            memcmp(method->name.start, superExpr->method.start, (size_t)superExpr->method.length) == 0) {
+            Type* result;
+            if (method->type == NULL) {
+                result = createUnknownType();
+            } else if (superType->kind == TYPE_GENERIC_INST && superClassStmt->typeParamCount > 0) {
+                result = substituteTypeInType(method->type,
+                                              superType->as.genericInst.typeArgs,
+                                              superClassStmt->typeParamCount);
+            } else {
+                result = method->type;
+            }
+
+            /* Inside a generic class instantiation, map the subclass type parameters
+             * (e.g. T) to concrete type arguments (e.g. int) so super calls are checked
+             * against the monomorphized signature. */
+            if (checker->currentClass != NULL &&
+                checker->currentClass->kind == TYPE_GENERIC_INST &&
+                checker->currentClassStmt != NULL) {
+                ClassStmt* childStmt = &checker->currentClassStmt->as.class_;
+                if (childStmt->typeParamCount > 0) {
+                    GenericInst* ci = &checker->currentClass->as.genericInst;
+                    if (ci->typeArgCount != childStmt->typeParamCount) {
+                        typeError(checker, expr->line,
+                                  "Generic class type arguments do not match type parameters.");
+                        return createErrorType();
+                    }
+                    result = substituteTypeInType(result, ci->typeArgs, childStmt->typeParamCount);
+                }
+            }
+            return result;
+        }
+    }
+
+    typeErrorFormat(checker, expr->line, "Superclass has no method '%.*s'.",
+                    superExpr->method.length, superExpr->method.start);
+    return createErrorType();
+}
+
 static Type* checkLambda(TypeChecker* checker, Expr* expr) {
     LambdaExpr* lambda = &expr->as.lambda;
 
@@ -1270,8 +1441,7 @@ static Type* checkExpr(TypeChecker* checker, Expr* expr) {
             type = checkThis(checker, expr);
             break;
         case EXPR_SUPER:
-            // TODO: Implement super type checking
-            type = createUnknownType();
+            type = checkSuper(checker, expr);
             break;
         case EXPR_MATCH:
             type = checkMatch(checker, expr);
@@ -1840,6 +2010,7 @@ static void checkClassStmt(TypeChecker* checker, Stmt* stmt) {
     // Define the class in current scope
     defineSymbol(checker, classStmt->name.start, classStmt->name.length,
                  classType, true);
+    registerClassDecl(checker, classType, stmt);
 
     if (classStmt->superclassType != NULL) {
         Type* st = resolveTypeNode(checker, classStmt->superclassType);
@@ -1851,7 +2022,9 @@ static void checkClassStmt(TypeChecker* checker, Stmt* stmt) {
 
     // Set current class for 'this' checking
     Type* previousClass = checker->currentClass;
+    Stmt* previousClassStmt = checker->currentClassStmt;
     checker->currentClass = classType;
+    checker->currentClassStmt = stmt;
 
     // Check methods
     for (int i = 0; i < classStmt->methodCount; i++) {
@@ -1895,6 +2068,7 @@ static void checkClassStmt(TypeChecker* checker, Stmt* stmt) {
     applyImplementsToClassType(classType, classStmt, checker);
 
     checker->currentClass = previousClass;
+    checker->currentClassStmt = previousClassStmt;
 }
 
 static void checkGenericInstanceBodies(TypeChecker* checker) {
@@ -1910,7 +2084,9 @@ static void checkGenericInstanceBodies(TypeChecker* checker) {
         }
 
         Type* prevClass = checker->currentClass;
+        Stmt* prevClassStmt = checker->currentClassStmt;
         checker->currentClass = inst;
+        checker->currentClassStmt = stmt;
 
         for (int mi = 0; mi < cs->methodCount; mi++) {
             FunctionStmt* method = &cs->methods[mi];
@@ -1955,6 +2131,7 @@ static void checkGenericInstanceBodies(TypeChecker* checker) {
 
         FREE_ARRAY(Type*, repl, cs->typeParamCount);
         checker->currentClass = prevClass;
+        checker->currentClassStmt = prevClassStmt;
     }
 }
 
@@ -2155,10 +2332,15 @@ void initTypeChecker(TypeChecker* checker) {
     initSymbolTable(&checker->symbols);
     checker->currentFunctionReturn = NULL;
     checker->currentClass = NULL;
+    checker->currentClassStmt = NULL;
     checker->hadError = false;
     checker->genericInsts = NULL;
     checker->genericInstCount = 0;
     checker->genericInstCapacity = 0;
+    checker->classDeclTypes = NULL;
+    checker->classDeclStmts = NULL;
+    checker->classDeclCount = 0;
+    checker->classDeclCapacity = 0;
 
     // Define built-in native functions
 
@@ -2637,6 +2819,12 @@ void freeTypeChecker(TypeChecker* checker) {
     checker->genericInsts = NULL;
     checker->genericInstCount = 0;
     checker->genericInstCapacity = 0;
+    FREE_ARRAY(Type*, checker->classDeclTypes, checker->classDeclCapacity);
+    FREE_ARRAY(Stmt*, checker->classDeclStmts, checker->classDeclCapacity);
+    checker->classDeclTypes = NULL;
+    checker->classDeclStmts = NULL;
+    checker->classDeclCount = 0;
+    checker->classDeclCapacity = 0;
     freeSymbolTable(&checker->symbols);
 }
 

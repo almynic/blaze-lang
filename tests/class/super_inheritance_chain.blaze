@@ -1,0 +1,22 @@
+// super resolves to immediate superclass across a three-level chain.
+
+class A {
+    fn tag() -> int {
+        return 1
+    }
+}
+
+class B extends A {
+    fn tag() -> int {
+        return 2 + super.tag()
+    }
+}
+
+class C extends B {
+    fn tag() -> int {
+        return 10 + super.tag()
+    }
+}
+
+let o: C = C()
+print(o.tag())

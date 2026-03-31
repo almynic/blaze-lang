@@ -1,0 +1,16 @@
+// super type checking: superclass method lookup.
+
+class Base {
+    fn id(n: int) -> int {
+        return n
+    }
+}
+
+class Child extends Base {
+    fn id(n: int) -> int {
+        return super.id(n)
+    }
+}
+
+let c: Child = Child()
+print(c.id(7))

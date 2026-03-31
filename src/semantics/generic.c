@@ -145,6 +145,10 @@ static TypeNode* substituteTypeNode(TypeNode* node, ClassStmt* cs, Type** repl, 
     return NULL;
 }
 
+TypeNode* substituteTypeNodeForClass(TypeNode* node, ClassStmt* cs, Type** repl, int line) {
+    return substituteTypeNode(node, cs, repl, line);
+}
+
 static Stmt* lowerOneInstance(TypeChecker* checker, Type* inst, Stmt* templateStmt) {
     ClassStmt* cs = &templateStmt->as.class_;
     char* nameBuf = ALLOCATE(char, 512);
@@ -241,7 +245,7 @@ void freeLoweredMonomorphClassStmt(Stmt* stmt) {
     for (int i = 0; i < c->methodCount; i++) {
         FunctionStmt* m = &c->methods[i];
         FREE_ARRAY(Token, m->typeParams, m->typeParamCount);
-        FREE_ARRAY(Token, m->params, m->paramCount);
+        /* m->params and m->body are shared with the generic template — do not free. */
         for (int j = 0; j < m->paramCount; j++) {
             freeTypeNode(m->paramTypes[j]);
         }

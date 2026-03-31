@@ -14,6 +14,7 @@ static Compiler* current = NULL;
 // Forward declarations
 static ObjFunction* endCompiler(int line);
 static bool compileStmt(Stmt* stmt);  // Returns true if statement is a terminator
+static void emitGetGlobalForClassType(Type* t, int line);
 
 // Mark compiler roots for GC
 void markCompilerRoots(void) {
@@ -73,20 +74,6 @@ static uint8_t makeConstant(Value value) {
         return 0;
     }
     return (uint8_t)constant;
-}
-
-static void emitGetGlobalForClassType(Type* t, int line) {
-    char buf[512];
-    if (t->kind == TYPE_CLASS) {
-        ObjString* name = copyString(t->as.classType->name, t->as.classType->nameLength);
-        emitBytes(line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(name)));
-    } else if (t->kind == TYPE_GENERIC_INST) {
-        mangleGenericInstType(t, buf, sizeof(buf));
-        ObjString* name = copyString(buf, (int)strlen(buf));
-        emitBytes(line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(name)));
-    } else {
-        compileError(line, "Invalid superclass type for inheritance.");
-    }
 }
 
 static void emitConstant(int line, Value value) {
@@ -232,6 +219,38 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
     }
 
     return -1;
+}
+
+static void emitGetGlobalForClassType(Type* t, int line) {
+    char buf[512];
+    const char* nameStart;
+    int nameLen;
+    if (t->kind == TYPE_CLASS) {
+        nameStart = t->as.classType->name;
+        nameLen = t->as.classType->nameLength;
+    } else if (t->kind == TYPE_GENERIC_INST) {
+        mangleGenericInstType(t, buf, sizeof(buf));
+        nameStart = buf;
+        nameLen = (int)strlen(buf);
+    } else {
+        compileError(line, "Invalid superclass type for inheritance.");
+        return;
+    }
+    /* Prepended monomorph classes live in script locals (compileImpl beginScope). */
+    Token nm;
+    nm.type = TOKEN_IDENTIFIER;
+    nm.start = nameStart;
+    nm.length = nameLen;
+    nm.line = line;
+    int arg = resolveLocal(current, &nm);
+    if (arg != -1) {
+        emitBytes(line, OP_GET_LOCAL, (uint8_t)arg);
+    } else if ((arg = resolveUpvalue(current, &nm)) != -1) {
+        emitBytes(line, OP_GET_UPVALUE, (uint8_t)arg);
+    } else {
+        ObjString* name = copyString(nameStart, nameLen);
+        emitBytes(line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(name)));
+    }
 }
 
 // ============================================================================
@@ -2083,21 +2102,29 @@ static void compileClassStmt(Stmt* stmt) {
     // Set up class compiler context for 'this'
     ClassCompiler classCompiler;
     classCompiler.enclosing = currentClass;
-    classCompiler.hasSuperclass = classStmt->superclassType != NULL;
+    /* Monomorphized generic classes may only set superclassResolved (see generic.c). */
+    classCompiler.hasSuperclass =
+        classStmt->superclassType != NULL || classStmt->superclassResolved != NULL;
     currentClass = &classCompiler;
 
     // Handle inheritance (superclass may be a script local from a prior `class` stmt)
-    if (classStmt->superclassType != NULL) {
-        if (classStmt->superclassType->kind == TYPE_NODE_SIMPLE) {
-            Token nm = classStmt->superclassType->as.simple.name;
-            int arg = resolveLocal(current, &nm);
-            if (arg != -1) {
-                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)arg);
-            } else if ((arg = resolveUpvalue(current, &nm)) != -1) {
-                emitBytes(stmt->line, OP_GET_UPVALUE, (uint8_t)arg);
+    if (classStmt->superclassType != NULL || classStmt->superclassResolved != NULL) {
+        if (classStmt->superclassType != NULL) {
+            if (classStmt->superclassType->kind == TYPE_NODE_SIMPLE) {
+                Token nm = classStmt->superclassType->as.simple.name;
+                int arg = resolveLocal(current, &nm);
+                if (arg != -1) {
+                    emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)arg);
+                } else if ((arg = resolveUpvalue(current, &nm)) != -1) {
+                    emitBytes(stmt->line, OP_GET_UPVALUE, (uint8_t)arg);
+                } else {
+                    ObjString* superStr = copyString(nm.start, nm.length);
+                    emitBytes(stmt->line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(superStr)));
+                }
+            } else if (classStmt->superclassResolved != NULL) {
+                emitGetGlobalForClassType(classStmt->superclassResolved, stmt->line);
             } else {
-                ObjString* superStr = copyString(nm.start, nm.length);
-                emitBytes(stmt->line, OP_GET_GLOBAL, makeConstant(OBJ_VAL(superStr)));
+                compileError(stmt->line, "Could not resolve superclass for inheritance.");
             }
         } else if (classStmt->superclassResolved != NULL) {
             emitGetGlobalForClassType(classStmt->superclassResolved, stmt->line);
@@ -2105,12 +2132,14 @@ static void compileClassStmt(Stmt* stmt) {
             compileError(stmt->line, "Could not resolve superclass for inheritance.");
         }
 
-        // Get the class back on the stack
-        if (current->scopeDepth > 0) {
+        // Get the class back on the stack (may be global even if we're in a 'super' scope)
+        {
             int slot = resolveLocal(current, &classStmt->name);
-            emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)slot);
-        } else {
-            emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+            if (slot != -1) {
+                emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)slot);
+            } else {
+                emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+            }
         }
 
         emitByte(stmt->line, OP_INHERIT);
@@ -2126,11 +2155,13 @@ static void compileClassStmt(Stmt* stmt) {
     }
 
     // Get class back on stack for method binding
-    if (current->scopeDepth > 0) {
+    {
         int slot = resolveLocal(current, &classStmt->name);
-        emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)slot);
-    } else {
-        emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+        if (slot != -1) {
+            emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)slot);
+        } else {
+            emitBytes(stmt->line, OP_GET_GLOBAL, nameConstant);
+        }
     }
 
     // Compile methods
@@ -2148,7 +2179,7 @@ static void compileClassStmt(Stmt* stmt) {
     emitByte(stmt->line, OP_POP);
 
     // Close super scope if we had a superclass
-    if (classStmt->superclassType != NULL) {
+    if (classStmt->superclassType != NULL || classStmt->superclassResolved != NULL) {
         endScope(stmt->line);
     }
 

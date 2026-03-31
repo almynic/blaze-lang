@@ -1,0 +1,16 @@
+// super through a generic subclass: method types use T; instantiation uses int.
+
+class Base<T> {
+    fn wrap(x: T) -> T {
+        return x
+    }
+}
+
+class Child<T> extends Base<T> {
+    fn bump(x: T) -> T {
+        return super.wrap(x)
+    }
+}
+
+let c: Child<int> = Child<int>()
+print(c.bump(41))
