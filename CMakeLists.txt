@@ -24,6 +24,11 @@ set(BLAZE_SOURCES
     src/semantics/generic.c
     src/codegen/compiler.c
     src/runtime/vm.c
+    src/runtime/vm_core.c
+    src/runtime/vm_debugger.c
+    src/runtime/vm_natives.c
+    src/runtime/vm_call.c
+    src/runtime/vm_execute.c
     src/runtime/object.c
     src/module/module.c
     src/support/colors.c
@@ -40,10 +45,14 @@ set(BLAZE_HEADERS
     src/syntax/scanner.h
     src/syntax/ast.h
     src/syntax/parser.h
+    src/syntax/parser_internal.h
     src/semantics/typechecker.h
+    src/semantics/typechecker_internal.h
     src/semantics/generic.h
     src/codegen/compiler.h
+    src/codegen/compiler_internal.h
     src/runtime/vm.h
+    src/runtime/vm_internal.h
     src/runtime/object.h
     src/module/module.h
     src/support/colors.h
