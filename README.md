@@ -148,6 +148,7 @@ let n = identity<int>(42)
 - **Optional chaining**: `obj?.property`
 - **Range syntax**: `1..10`
 - **For-in loops**: `for item in array { ... }`
+- **Bitwise operators**: `& | ^ ~ << >>` (int operands)
 
 ### Developer Experience
 

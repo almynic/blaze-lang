@@ -203,15 +203,15 @@ let {x, y} = p  // ✅ Implemented
 
 ---
 
-### Phase 11: Low-Level Primitives (Not Started)
+### Phase 11: Low-Level Primitives (Bitwise complete)
 **Priority**: Medium | **Complexity**: Low
 
-#### Bitwise Operators
-- Implement `&` (AND), `|` (OR), `^` (XOR), `~` (NOT), `<<` (SHL), `>>` (SHR)
-- Essential for systems programming and bit-packing
-- Low complexity implementation in compiler and VM
+#### Bitwise Operators (✅ Implemented)
+- `&` (AND), `|` (OR), `^` (XOR), `~` (NOT), `<<` (SHL), `>>` (SHR) are implemented across scanner/parser/typechecker/compiler/VM.
+- Integer-only typing for bitwise/shift operations is enforced in the type checker.
+- Regression coverage exists under `tests/bitwise/*.blaze`.
 
-#### Pointer Operations
+#### Pointer Operations (Not Started)
 - `addrOf(var)` and `deref(ptr)` (if safe memory access can be guaranteed)
 - Or a more abstracted `MemoryBuffer` for raw byte manipulation
 

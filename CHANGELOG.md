@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### March 31, 2026 - Roadmap alignment for bitwise operators
+
+#### Changed
+- **Docs**: `ROADMAP.md` now marks bitwise operators (`& | ^ ~ << >>`) as implemented and scopes remaining Phase 11 work to pointer-style primitives.
+- **README**: syntax features now explicitly list bitwise operators.
+
 ### March 31, 2026 - Debugger protocol MVP (JSON lines)
 
 #### Added
