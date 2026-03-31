@@ -1,6 +1,6 @@
 # Blaze Language Roadmap
 
-> **Current Status**: Experimental | **Completion**: 99%
+> **Current Status**: Experimental | **Completion**: 99%+
 
 Blaze is a feature-complete statically-typed programming language. This roadmap outlines the current state and potential future enhancements.
 
@@ -103,7 +103,7 @@ The core compiler is complete and has excellent developer experience. These are 
 
 ---
 
-### Phase 8: Debug Mode (In Progress)
+### Phase 8: Debugger and Tooling (Mostly complete)
 **Priority**: Medium | **Complexity**: Medium
 
 #### Step-Through Execution
@@ -114,18 +114,16 @@ The core compiler is complete and has excellent developer experience. These are 
 - ✅ Step out (`out` / `o`)
 - ✅ Richer conditional breakpoints (`hit`, `line`, `depth`, `local[N]`, `&&`)
 
-#### Implementation Ideas
-- Add debug info to bytecode (line mappings)
+#### Remaining Work
 - Debugger protocol for IDE integration
-- Interactive debug REPL
-- Conditional breakpoints
+- Additional debugger UX polish and docs
 
 **Benefits**:
 - Better debugging experience
 - Easier development and troubleshooting
 - IDE integration potential
 
-**Estimated Effort**: 1-2 additional weeks for step-out + richer conditions + IDE protocol polish
+**Estimated Effort**: 1-2 additional weeks for IDE protocol and polish
 
 ---
 
@@ -271,8 +269,8 @@ If you're interested in contributing to any of these future enhancements, please
 ## Version History
 
 - **v0.1.0** (Current): Feature-complete core language with all essential features
-- **v0.2.0** (In progress): Generic functions, typed/block lambdas, user-defined generic classes with monomorphization, type aliases
-- **v0.3.0** (Future): Debug mode and developer tooling
+- **v0.2.0** (In progress): Generic functions, typed/block lambdas, user-defined generic classes with monomorphization, type aliases, debugger foundations
+- **v0.3.0** (Future): Debugger protocol and developer tooling polish
 - **v1.0.0** (Future): Performance optimizations and stability improvements
 
 ---
@@ -289,4 +287,4 @@ Even though the language is feature-complete, ongoing maintenance includes:
 
 ---
 
-**Last Updated**: March 30, 2026
+**Last Updated**: March 31, 2026

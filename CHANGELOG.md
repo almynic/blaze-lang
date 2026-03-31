@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `delete <line>`, `breakpoints`
   - `step` / `next` / `out` / `continue`
   - `bt` (stack trace) and `locals` (frame slots)
-- **CLI debug mode** in `main.c`:
+- **CLI debugger mode** in `main.c`:
   - `--debug` to enable debugger for script execution
   - `--break <line>` for startup breakpoints
   - `--break-if <line>:hit>=N` for startup conditional breakpoints

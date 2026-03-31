@@ -148,7 +148,7 @@ The type checker performs semantic analysis and type inference.
 - **Primitive Types**: `int`, `float`, `bool`, `string`, `nil`
 - **Composite Types**: Arrays, functions, classes, unions, optionals
 - **Type parameters** (functions): `TYPE_TYPE_PARAM` — placeholder types for `T` in `fn f<T>(...)`, resolved in scope during checking; used with conservative rules for arithmetic and comparisons inside generic bodies
-- **Generic annotations**: `TYPE_GENERIC_INST` exists for future instantiated types; generic type nodes in the AST may still resolve to `unknown` where full checking is not implemented yet
+- **Generic classes and instantiations**: `TYPE_GENERIC_CLASS_TEMPLATE` and `TYPE_GENERIC_INST` model user-defined generic classes and their concrete instantiations; generic class instantiations are validated and lowered through monomorphization.
 - **Type Inference**: Bidirectional type inference for variables and functions
 - **Type Narrowing**: Automatic refinement in conditionals
 - **Union Types**: `int | string`
@@ -613,4 +613,4 @@ blaze-lang/
 
 ---
 
-**Last Updated**: March 30, 2026
+**Last Updated**: March 31, 2026

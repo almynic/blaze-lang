@@ -3,7 +3,7 @@
 > A modern, statically-typed programming language with excellent developer experience
 
 [![Status](https://img.shields.io/badge/status-experimental-yellow)]()
-[![Completion](https://img.shields.io/badge/completion-99%25-blue)]()
+[![Completion](https://img.shields.io/badge/completion-99%25%2B-blue)]()
 [![Language](https://img.shields.io/badge/language-C23-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 
@@ -386,7 +386,7 @@ For more details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Project Status
 
-### ✅ Completed (99%)
+### ✅ Completed (99%+)
 
 All core language features are implemented and tested:
 
@@ -404,7 +404,7 @@ All core language features are implemented and tested:
 Optional features that could be added:
 
 - Richer stdlib generics (e.g. nominal `Array<T>`-style APIs where the surface area grows)
-- Debug mode with breakpoints
+- Debugger protocol / IDE integration polish
 - Interfaces / protocols, expanded enum ADTs
 
 User-defined generic **classes** (`class Box<T> { ... }`) with monomorphization, **generic functions**, destructuring, tail calls, NaN boxing, and loop unrolling are already implemented. For more detail, see [ROADMAP.md](ROADMAP.md).
@@ -436,4 +436,4 @@ Built with inspiration from:
 
 ---
 
-**Last Updated**: March 30, 2026
+**Last Updated**: March 31, 2026
