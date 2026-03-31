@@ -1,0 +1,12 @@
+fn fromCatch() -> int {
+    try {
+        throw "boom"
+    } catch (e) {
+        print(e)
+        return 9
+    } finally {
+        print("finally")
+    }
+}
+
+print(fromCatch())

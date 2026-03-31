@@ -33,6 +33,8 @@ typedef enum {
     FN_TYPE_INITIALIZER,
 } CompilerFnType;
 
+#define COMPILER_MAX_FINALLY_DEPTH 64
+
 // Compiler state
 typedef struct Compiler {
     struct Compiler* enclosing;     // Enclosing compiler for functions
@@ -44,6 +46,8 @@ typedef struct Compiler {
     Upvalue upvalues[UINT8_COUNT];  // Captured variables
     int scopeDepth;
     Type* currentFunctionReturn;    // Return type of current function
+    Stmt* activeFinallyBodies[COMPILER_MAX_FINALLY_DEPTH];
+    int activeFinallyCount;
 } Compiler;
 
 // Initialize a compiler

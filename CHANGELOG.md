@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### March 31, 2026 - Try/finally: execute finally on return
+
+#### Fixed
+- **Compiler (`src/codegen/compiler.c`)**: `return` statements inside `try`/`catch` now execute all active enclosing `finally` blocks before emitting `OP_RETURN`, including nested `try/finally` chains.
+
+#### Added
+- Regression tests for early-return `finally` semantics:
+  - `tests/core/try_finally_return_try_path.blaze`
+  - `tests/core/try_finally_return_catch_path.blaze`
+  - `tests/core/try_finally_nested_return.blaze`
+  - `tests/core/try_finally_return_print_call.blaze` (returning a call expression inside `try/finally`)
+
 ### March 30, 2026 - Phase 7 (follow-up): variance, recursion guards, generic super validation, enum match patterns
 
 #### Added

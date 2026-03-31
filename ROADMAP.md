@@ -251,7 +251,7 @@ let {x, y} = p  // ✅ Implemented
 
 These are current design choices or limitations:
 
-- **Finally blocks and early returns**: Finally blocks don't execute on early return/break (would require more complex bytecode)
+- **Finally blocks and early exits**: `finally` now runs on early `return`; loop `break` is not a language feature yet
 - **Generic limitations**: Interface bounds on generic *class* type parameters (`class C<T: I>`) and variance / recursive nominal guards are implemented (see Phase 7). Optional follow-ups include richer constraint forms (e.g. bounds on generic *function* type parameters) and other refinements listed under Phase 7.
 
 ---

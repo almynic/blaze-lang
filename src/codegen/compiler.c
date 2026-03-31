@@ -13,6 +13,7 @@ static Compiler* current = NULL;
 
 // Forward declarations
 static ObjFunction* endCompiler(int line);
+static bool compileStmt(Stmt* stmt);  // Returns true if statement is a terminator
 
 // Mark compiler roots for GC
 void markCompilerRoots(void) {
@@ -130,6 +131,32 @@ static void beginScope(void) {
     current->scopeDepth++;
 }
 
+static void pushActiveFinallyBody(Stmt* finallyBody, int line) {
+    if (current->activeFinallyCount >= COMPILER_MAX_FINALLY_DEPTH) {
+        compileError(line, "Too many nested try/finally blocks.");
+        return;
+    }
+    current->activeFinallyBodies[current->activeFinallyCount++] = finallyBody;
+}
+
+static void popActiveFinallyBody(void) {
+    if (current->activeFinallyCount <= 0) {
+        return;
+    }
+    current->activeFinallyCount--;
+}
+
+static void emitReturnFinallyBodies(int line) {
+    for (int i = current->activeFinallyCount - 1; i >= 0; i--) {
+        Stmt* finallyBody = current->activeFinallyBodies[i];
+        if (finallyBody != NULL) {
+            compileStmt(finallyBody);
+        } else {
+            compileError(line, "Internal compiler error: missing finally block.");
+        }
+    }
+}
+
 static void endScope(int line) {
     current->scopeDepth--;
 
@@ -212,7 +239,6 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
 // ============================================================================
 
 static void compileExpr(Expr* expr);
-static bool compileStmt(Stmt* stmt);  // Returns true if statement is a terminator
 static void compileMatchExpr(Expr* expr);
 
 static void compileLiteral(Expr* expr) {
@@ -1581,6 +1607,7 @@ static void compileReturnStmt(Stmt* stmt) {
             compileError(stmt->line, "Cannot return a value from an initializer.");
         }
         emitBytes(stmt->line, OP_GET_LOCAL, 0);  // Return 'this'
+        emitReturnFinallyBodies(stmt->line);
         emitByte(stmt->line, OP_RETURN);
         return;
     }
@@ -1596,6 +1623,7 @@ static void compileReturnStmt(Stmt* stmt) {
                 if (call->argCount == 1) {
                     compileExpr(call->arguments[0]);
                     emitByte(stmt->line, OP_PRINT);
+                    emitReturnFinallyBodies(stmt->line);
                     emitByte(stmt->line, OP_RETURN);
                     return;
                 }
@@ -1605,6 +1633,24 @@ static void compileReturnStmt(Stmt* stmt) {
         // Skip super method calls (complex semantics)
         if (call->callee->kind == EXPR_SUPER) {
             compileExpr(ret->value);
+            emitReturnFinallyBodies(stmt->line);
+            emitByte(stmt->line, OP_RETURN);
+            return;
+        }
+
+        if (current->activeFinallyCount > 0) {
+            // Preserve return value while executing enclosing finally blocks.
+            compileExpr(ret->value);
+            Token retTok;
+            retTok.start = "";
+            retTok.length = 0;
+            retTok.line = stmt->line;
+            addLocal(retTok, NULL, false);
+            current->locals[current->localCount - 1].depth = current->scopeDepth;
+            int retSlot = current->localCount - 1;
+
+            emitReturnFinallyBodies(stmt->line);
+            emitBytes(stmt->line, OP_GET_LOCAL, (uint8_t)retSlot);
             emitByte(stmt->line, OP_RETURN);
             return;
         }
@@ -1625,6 +1671,7 @@ static void compileReturnStmt(Stmt* stmt) {
         emitByte(stmt->line, OP_NIL);
     }
 
+    emitReturnFinallyBodies(stmt->line);
     emitByte(stmt->line, OP_RETURN);
 }
 
@@ -1820,7 +1867,13 @@ static void compileTryStmt(Stmt* stmt) {
     emitByte(stmt->line, 0xff);  // Placeholder low byte
 
     // Compile try body
+    if (tryStmt->finallyBody != NULL) {
+        pushActiveFinallyBody(tryStmt->finallyBody, stmt->line);
+    }
     compileStmt(tryStmt->tryBody);
+    if (tryStmt->finallyBody != NULL) {
+        popActiveFinallyBody();
+    }
 
     // Emit OP_TRY_END (no exception occurred)
     emitByte(stmt->line, OP_TRY_END);
@@ -1845,7 +1898,13 @@ static void compileTryStmt(Stmt* stmt) {
     // Value is already on stack, mark local as initialized
     current->locals[current->localCount - 1].depth = current->scopeDepth;
 
+    if (tryStmt->finallyBody != NULL) {
+        pushActiveFinallyBody(tryStmt->finallyBody, stmt->line);
+    }
     compileStmt(tryStmt->catchBody);
+    if (tryStmt->finallyBody != NULL) {
+        popActiveFinallyBody();
+    }
     endScope(stmt->line);
 
     // Compile finally block for catch path
@@ -2165,6 +2224,7 @@ void initCompiler(Compiler* compiler, Compiler* enclosing, CompilerFnType type) 
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
     compiler->currentFunctionReturn = NULL;
+    compiler->activeFinallyCount = 0;
 
     compiler->function = newFunction();
 

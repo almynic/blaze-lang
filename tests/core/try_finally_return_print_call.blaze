@@ -1,0 +1,17 @@
+fn p() -> nil {
+    print("value")
+    return nil
+}
+
+fn returnPrintInTry() -> nil {
+    try {
+        return p()
+    } catch (e) {
+        print("catch")
+        return nil
+    } finally {
+        print("finally")
+    }
+}
+
+returnPrintInTry()

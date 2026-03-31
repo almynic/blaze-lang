@@ -1,0 +1,17 @@
+fn nested() -> int {
+    try {
+        try {
+            return 42
+        } catch (e) {
+            return 0
+        } finally {
+            print("inner")
+        }
+    } catch (e) {
+        return -1
+    } finally {
+        print("outer")
+    }
+}
+
+print(nested())

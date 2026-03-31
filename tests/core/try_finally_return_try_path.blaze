@@ -1,0 +1,13 @@
+fn fromTry() -> int {
+    try {
+        print("try")
+        return 7
+    } catch (e) {
+        print("catch")
+        return 0
+    } finally {
+        print("finally")
+    }
+}
+
+print(fromTry())
