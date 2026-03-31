@@ -1844,6 +1844,10 @@ void initVM(VM* vm) {
 }
 
 void freeVM(VM* vm) {
+    if (moduleSystemInitialized) {
+        freeModuleSystem(&moduleSystem);
+        moduleSystemInitialized = false;
+    }
     freeTable(&vm->strings);
     freeTable(&vm->globals);
     setGCVM(NULL);  // Unregister VM from GC
@@ -3556,15 +3560,18 @@ static bool processImports(VM* vm, Stmt** statements, int count) {
 
             // For selective imports, track existing globals before module execution
             ObjString** existingKeys = NULL;
+            Value* existingValues = NULL;
             int existingCount = 0;
 
             if (import->nameCount > 0) {
                 // Collect existing global keys
                 existingKeys = (ObjString**)malloc(sizeof(ObjString*) * vm->globals.capacity);
+                existingValues = (Value*)malloc(sizeof(Value) * vm->globals.capacity);
                 for (int j = 0; j < vm->globals.capacity; j++) {
                     Entry* entry = &vm->globals.entries[j];
                     if (entry->key != NULL) {
                         existingKeys[existingCount++] = entry->key;
+                        existingValues[existingCount - 1] = entry->value;
                     }
                 }
             }
@@ -3575,11 +3582,14 @@ static bool processImports(VM* vm, Stmt** statements, int count) {
                 ObjClosure* closure = newClosure(module->function);
                 pop(vm);
                 push(vm, OBJ_VAL(closure));
-                call(vm, closure, 0);
+                if (!call(vm, closure, 0)) {
+                    return false;
+                }
 
                 InterpretResult result = executeWithFrames(vm);
                 if (result != INTERPRET_OK) {
                     if (existingKeys != NULL) free(existingKeys);
+                    if (existingValues != NULL) free(existingValues);
                     return false;
                 }
             }
@@ -3596,16 +3606,26 @@ static bool processImports(VM* vm, Stmt** statements, int count) {
 
                     // Check if this key existed before module execution
                     bool existed = false;
+                    int existedIndex = -1;
                     for (int k = 0; k < existingCount; k++) {
                         if (existingKeys[k] == entry->key) {
                             existed = true;
+                            existedIndex = k;
                             break;
                         }
                     }
 
-                    // If it's a new symbol and not in the import list, mark for deletion
-                    if (!existed && !isNameInImportList(import, entry->key->chars, entry->key->length)) {
+                    bool keepImported = isNameInImportList(import, entry->key->chars, entry->key->length);
+
+                    // New symbol not imported: remove it.
+                    if (!existed && !keepImported) {
                         keysToDelete[deleteCount++] = entry->key;
+                    }
+
+                    // Existing symbol not imported: restore the previous value in case
+                    // module execution overwrote a builtin/global with same name.
+                    if (existed && !keepImported && existedIndex >= 0) {
+                        tableSet(&vm->globals, entry->key, existingValues[existedIndex]);
                     }
                 }
 
@@ -3616,6 +3636,7 @@ static bool processImports(VM* vm, Stmt** statements, int count) {
 
                 free(keysToDelete);
                 free(existingKeys);
+                free(existingValues);
             }
         }
     }
@@ -3659,6 +3680,9 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
 
     // Add existing globals to the type checker's symbol table
     // This enables REPL persistence - variables/functions from previous inputs
+    // Store them at an outer depth so current top-level declarations can shadow
+    // names like prelude `sum`/`range`.
+    checker.symbols.scopeDepth = -1;
     for (int i = 0; i < vm->globals.capacity; i++) {
         Entry* entry = &vm->globals.entries[i];
         if (entry->key == NULL) continue;
@@ -3694,6 +3718,7 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
 
         defineSymbol(&checker, entry->key->chars, entry->key->length, type, false);
     }
+    checker.symbols.scopeDepth = 0;
 
     bool typeOk = typeCheck(&checker, statements, stmtCount);
 
@@ -3761,7 +3786,10 @@ static InterpretResult interpretInternal(VM* vm, const char* source, bool replMo
     ObjClosure* closure = newClosure(function);
     pop(vm);
     push(vm, OBJ_VAL(closure));
-    call(vm, closure, 0);
+    if (!call(vm, closure, 0)) {
+        vm->debuggerEnabled = debuggerWasEnabled;
+        return INTERPRET_RUNTIME_ERROR;
+    }
     vm->debuggerEnabled = debuggerWasEnabled;
 
     return executeWithFrames(vm);
