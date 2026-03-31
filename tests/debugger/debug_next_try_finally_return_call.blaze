@@ -1,0 +1,15 @@
+fn leaf(v: int) -> int {
+    return v + 1
+}
+
+fn wrapped(v: int) -> int {
+    try {
+        return leaf(v)
+    } catch (e) {
+        return 0
+    } finally {
+        print("cleanup")
+    }
+}
+
+print(wrapped(41))

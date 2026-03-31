@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### March 31, 2026 - Debugger stepping across frame transitions
+
+#### Fixed
+- **VM debugger (`src/runtime/vm.c`)**: stepping decisions (`step`, `next`, `out`) now treat source location changes as line **or frame/function** transitions, so stepping reliably pauses after returns and call-boundary transitions even when line numbers coincide across frames.
+
+#### Added
+- Debugger regression program: `tests/debugger/debug_next_try_finally_return_call.blaze` (returning a call inside `try/finally`).
+
 ### March 31, 2026 - Tail-call return bookkeeping under finally
 
 #### Fixed

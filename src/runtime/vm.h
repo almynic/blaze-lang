@@ -72,6 +72,8 @@ typedef struct VM {
     DebugStepMode debuggerStepMode;
     int debuggerStepDepth;
     int debuggerLastLine;
+    int debuggerLastFrameDepth;
+    ObjFunction* debuggerLastFunction;
     bool debuggerAutoContinue;
     char debuggerBreakpointsPath[512];
     DebugBreakpoint breakpoints[DEBUG_BREAKPOINTS_MAX];

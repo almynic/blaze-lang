@@ -1729,6 +1729,8 @@ void initVM(VM* vm) {
     vm->debuggerStepMode = DEBUG_STEP_NONE;
     vm->debuggerStepDepth = 0;
     vm->debuggerLastLine = -1;
+    vm->debuggerLastFrameDepth = 0;
+    vm->debuggerLastFunction = NULL;
     vm->debuggerAutoContinue = false;
     vm->debuggerBreakpointsPath[0] = '\0';
     vm->breakpointCount = 0;
@@ -1859,6 +1861,9 @@ void freeVM(VM* vm) {
 
 void setDebuggerEnabled(VM* vm, bool enabled) {
     vm->debuggerEnabled = enabled;
+    vm->debuggerLastLine = -1;
+    vm->debuggerLastFrameDepth = 0;
+    vm->debuggerLastFunction = NULL;
 }
 
 void setDebuggerBreakpointsPath(VM* vm, const char* path) {
@@ -2618,26 +2623,35 @@ static InterpretResult executeWithFrames(VM* vm) {
 
         if (vm->debuggerEnabled && vm->frameCount > 0) {
             int line = currentFrameLine(frame);
-            bool lineChanged = (line != vm->debuggerLastLine);
+            int frameDepth = vm->frameCount;
+            ObjFunction* function = frame->closure->function;
+            bool sourceLocationChanged =
+                (line != vm->debuggerLastLine) ||
+                (frameDepth != vm->debuggerLastFrameDepth) ||
+                (function != vm->debuggerLastFunction);
             bool pause = false;
 
-            if (lineChanged && shouldPauseForBreakpoint(vm, frame, line)) {
+            if (sourceLocationChanged && shouldPauseForBreakpoint(vm, frame, line)) {
                 pause = true;
-            } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_IN) {
+            } else if (sourceLocationChanged && vm->debuggerStepMode == DEBUG_STEP_IN) {
                 pause = true;
-            } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_NEXT &&
+            } else if (sourceLocationChanged && vm->debuggerStepMode == DEBUG_STEP_NEXT &&
                        vm->frameCount <= vm->debuggerStepDepth) {
                 pause = true;
-            } else if (lineChanged && vm->debuggerStepMode == DEBUG_STEP_OUT &&
+            } else if (sourceLocationChanged && vm->debuggerStepMode == DEBUG_STEP_OUT &&
                        vm->frameCount < vm->debuggerStepDepth) {
                 pause = true;
             }
 
             if (pause) {
                 vm->debuggerLastLine = line;
+                vm->debuggerLastFrameDepth = frameDepth;
+                vm->debuggerLastFunction = function;
                 debuggerRepl(vm, frame, line);
-            } else if (lineChanged) {
+            } else if (sourceLocationChanged) {
                 vm->debuggerLastLine = line;
+                vm->debuggerLastFrameDepth = frameDepth;
+                vm->debuggerLastFunction = function;
             }
         }
 
