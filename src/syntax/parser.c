@@ -925,7 +925,7 @@ ParseRule rules[] = {
     [TOKEN_FALSE]         = {literal,  NULL,   PREC_NONE},
     [TOKEN_NIL]           = {literal,  NULL,   PREC_NONE},
     [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_TYPE_ALIAS]    = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_TYPE_ALIAS]    = {variable, NULL,   PREC_NONE},
     [TOKEN_TYPE_INT]      = {NULL,     NULL,   PREC_NONE},
     [TOKEN_TYPE_FLOAT]    = {NULL,     NULL,   PREC_NONE},
     [TOKEN_TYPE_BOOL]     = {NULL,     NULL,   PREC_NONE},
@@ -1741,6 +1741,13 @@ static Stmt* matchStatement(Parser* parser) {
         }
 
         count++;
+        if (cases[count - 1].isWildcard) {
+            skipNewlines(parser);
+            if (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+                error(parser, "Wildcard '_' case must be the last match arm.");
+                return NULL;
+            }
+        }
         skipNewlines(parser);
     }
 
@@ -1814,6 +1821,13 @@ static Expr* matchExpression(Parser* parser) {
         cases[count].value = expression(parser);
 
         count++;
+        if (cases[count - 1].isWildcard) {
+            skipNewlines(parser);
+            if (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+                error(parser, "Wildcard '_' case must be the last match arm.");
+                return NULL;
+            }
+        }
 
         // Optional comma or newline between cases
         if (!check(parser, TOKEN_RIGHT_BRACE)) {
