@@ -2,6 +2,8 @@
 
 This document describes the **concrete syntax** of the Blaze language using a **BNF-style grammar**. It is derived from the reference implementation (`src/syntax/parser.c`, `src/syntax/scanner.h`). The grammar is **informative**: the parser uses Pratt precedence and speculative parsing; some rules are therefore **disambiguated at parse time** (notably generic calls `name<T>(args)` vs. binary `<`).
 
+For a practical, example-first overview, see [README.md](README.md).
+
 **Notation**
 
 - Non-terminals: `LikeThis`.
@@ -192,12 +194,16 @@ Expressions use **Pratt parsing** with the following precedence (high number = b
 | Assignment | `=` (invalid assignment target is an error) |
 | Logical OR | `\|\|` |
 | Logical AND | `&&` |
+| Bitwise OR | `\|` |
+| Bitwise XOR | `^` |
+| Bitwise AND | `&` |
 | Equality | `==` `!=` |
 | Comparison | `<` `>` `<=` `>=` (see **generic call** note) |
+| Shift | `<<` `>>` |
 | Range | `..` |
 | Term | `+` `-` |
 | Factor | `*` `/` `%` |
-| Unary | `!` `-` |
+| Unary | `!` `-` `~` |
 | Call / member / index | `()` `.` `?.` `[]` `<` `>` (generic args) |
 
 ```bnf
@@ -205,13 +211,17 @@ Expression         ::= AssignmentExpr
 AssignmentExpr     ::= LogicalOrExpr [ "=" AssignmentExpr ]   /* only valid lvalues */
 
 LogicalOrExpr      ::= LogicalAndExpr { "||" LogicalAndExpr }
-LogicalAndExpr     ::= EqualityExpr { "&&" EqualityExpr }
+LogicalAndExpr     ::= BitwiseOrExpr { "&&" BitwiseOrExpr }
+BitwiseOrExpr      ::= BitwiseXorExpr { "|" BitwiseXorExpr }
+BitwiseXorExpr     ::= BitwiseAndExpr { "^" BitwiseAndExpr }
+BitwiseAndExpr     ::= EqualityExpr { "&" EqualityExpr }
 EqualityExpr       ::= ComparisonExpr { ("==" | "!=") ComparisonExpr }
-ComparisonExpr     ::= RangeExpr { ("<" | ">" | "<=" | ">=") RangeExpr }   /* disambiguated vs generic call */
+ComparisonExpr     ::= ShiftExpr { ("<" | ">" | "<=" | ">=") ShiftExpr }   /* disambiguated vs generic call */
+ShiftExpr          ::= RangeExpr { ("<<" | ">>") RangeExpr }
 RangeExpr          ::= AdditiveExpr { ".." AdditiveExpr }
 AdditiveExpr       ::= MultiplicativeExpr { ("+" | "-") MultiplicativeExpr }
 MultiplicativeExpr ::= UnaryExpr { ("*" | "/" | "%") UnaryExpr }
-UnaryExpr          ::= ("!" | "-") UnaryExpr | PostfixExpr
+UnaryExpr          ::= ("!" | "-" | "~") UnaryExpr | PostfixExpr
 PostfixExpr        ::= Primary { Postfix }
 Postfix            ::= "(" [ ArgumentList ] ")"              /* call */
                     | "<" TypeArgumentList ">" "(" [ ArgumentList ] ")"  /* explicit generic call */

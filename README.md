@@ -150,6 +150,14 @@ let n = identity<int>(42)
 - **For-in loops**: `for item in array { ... }`
 - **Bitwise operators**: `& | ^ ~ << >>` (int operands)
 
+Bitwise precedence (high to low): unary `~`, shifts `<< >>`, bitwise AND `&`, bitwise XOR `^`, bitwise OR `|` (formal grammar: [LANGUAGE_SPECIFICATIONS.md](LANGUAGE_SPECIFICATIONS.md#11-expressions)).
+
+```blaze
+print(1 + 2 << 3)  // (1 + 2) << 3  => 24
+print(1 | 2 & 3)   // 1 | (2 & 3)   => 3
+print(~5)          // bitwise not    => -6
+```
+
 ### Developer Experience
 
 - **Interactive REPL** with GNU Readline support
@@ -170,6 +178,7 @@ let n = identity<int>(42)
 ## Documentation
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into compiler and VM architecture
+- **[LANGUAGE_SPECIFICATIONS.md](LANGUAGE_SPECIFICATIONS.md)** - Formal grammar, precedence, and syntax reference
 - **[CHANGELOG.md](CHANGELOG.md)** - Detailed version history
 - **[ROADMAP.md](ROADMAP.md)** - Future enhancements and project direction
 
