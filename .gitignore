@@ -6,6 +6,7 @@ cmake-build-debug/
 *.bin
 
 # IDE files
+.cursor/
 .idea/
 .vscode/
 *.swp
